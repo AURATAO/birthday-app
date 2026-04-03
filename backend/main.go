@@ -1,10 +1,15 @@
 package main
 
 import (
+	"context"
 	"log"
+	"net/http"
 	"os"
 
+	"birthday-app/handlers"
+
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 )
 
@@ -13,6 +18,15 @@ func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file, using environment variables")
 	}
+
+	// Connect to Supabase via pgx pool
+	pool, err := pgxpool.New(context.Background(), os.Getenv("DATABASE_URL"))
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer pool.Close()
+
+	handlers.InitDB(pool)
 
 	r := gin.Default()
 
@@ -33,14 +47,13 @@ func main() {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
-	// Routes (we'll fill these in next)
 	api := r.Group("/api")
 	{
-		api.POST("/birthdays", createBirthday)
-		api.GET("/birthdays", getBirthdays)
-		api.POST("/voice/parse", parseVoice)
-		api.POST("/card/generate", generateCard)
-		api.POST("/card/send", sendCard)
+		api.POST("/birthdays", handlers.CreateBirthday)
+		api.GET("/birthdays", handlers.GetBirthdays)
+		api.POST("/voice/parse", handlers.ParseVoice)
+		api.POST("/card/generate", func(c *gin.Context) { c.JSON(http.StatusNotImplemented, gin.H{"error": "not implemented"}) })
+		api.POST("/card/send", func(c *gin.Context) { c.JSON(http.StatusNotImplemented, gin.H{"error": "not implemented"}) })
 	}
 
 	port := os.Getenv("PORT")
