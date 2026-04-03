@@ -31,11 +31,14 @@ func GenerateCard(c *gin.Context) {
 		return
 	}
 
-	// Fetch birthday details
+	// Fetch person + event details by event ID
 	var name, relationship, notes string
 	var birthdayDate time.Time
 	err := DB.QueryRow(context.Background(),
-		`SELECT name, birthday, relationship, notes FROM birthdays WHERE id = $1`,
+		`SELECT p.name, e.event_date, p.relationship, p.notes
+		 FROM events e
+		 JOIN people p ON p.id = e.person_id
+		 WHERE e.id = $1`,
 		req.BirthdayID,
 	).Scan(&name, &birthdayDate, &relationship, &notes)
 	if err != nil {

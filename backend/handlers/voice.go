@@ -17,9 +17,10 @@ type ParseVoiceRequest struct {
 	Transcript string `json:"transcript" binding:"required"`
 }
 
-type ParsedBirthday struct {
+type ParsedEvent struct {
 	Name     string `json:"name"`
 	Birthday string `json:"birthday"` // YYYY-MM-DD
+	Type     string `json:"type"`     // birthday, anniversary, etc.
 }
 
 type claudeMessage struct {
@@ -56,10 +57,14 @@ func ParseVoice(c *gin.Context) {
 	}
 
 	prompt := fmt.Sprintf(
-		`Extract the person's name and birthday from this voice transcript.
+		`Extract event details from this voice transcript.
 Respond with raw JSON only — no markdown, no code blocks, no explanation.
-The JSON must have exactly two fields: "name" (string) and "birthday" (string in YYYY-MM-DD format, use %d if no year is mentioned).
-If you cannot extract both fields, return {"name": "", "birthday": ""}.
+The JSON must have exactly three fields:
+- "name" (string): the person's name
+- "birthday" (string): the date in YYYY-MM-DD format, use %d if no year is mentioned
+- "type" (string): the event type — one of "birthday", "anniversary", "graduation", "other" — default to "birthday" if unclear
+
+If you cannot extract name and date, return {"name": "", "birthday": "", "type": "birthday"}.
 
 Transcript: %s`,
 		time.Now().Year(), req.Transcript,
@@ -104,7 +109,7 @@ Transcript: %s`,
 		text = strings.TrimSpace(text)
 	}
 
-	var parsed ParsedBirthday
+	var parsed ParsedEvent
 	if err := json.Unmarshal([]byte(text), &parsed); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Claude returned invalid JSON: " + text})
 		return

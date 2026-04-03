@@ -49,8 +49,9 @@ func main() {
 
 	api := r.Group("/api")
 	{
-		api.POST("/birthdays", handlers.CreateBirthday)
-		api.GET("/birthdays", handlers.GetBirthdays)
+		api.POST("/people", handlers.CreatePerson)
+		api.POST("/events", handlers.CreateEvent)
+		api.GET("/events/upcoming", handlers.GetUpcomingEvents)
 		api.POST("/voice/parse", handlers.ParseVoice)
 		api.POST("/card/generate", handlers.GenerateCard)
 		api.POST("/card/send", func(c *gin.Context) { c.JSON(http.StatusNotImplemented, gin.H{"error": "not implemented"}) })
