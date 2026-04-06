@@ -52,6 +52,7 @@ func main() {
 		api.POST("/people", handlers.CreatePerson)
 		api.POST("/events", handlers.CreateEvent)
 		api.GET("/events/upcoming", handlers.GetUpcomingEvents)
+		api.GET("/events/:id", handlers.GetEvent)
 		api.POST("/voice/parse", handlers.ParseVoice)
 		api.POST("/card/generate", handlers.GenerateCard)
 		api.POST("/card/send", func(c *gin.Context) { c.JSON(http.StatusNotImplemented, gin.H{"error": "not implemented"}) })

@@ -18,9 +18,10 @@ type ParseVoiceRequest struct {
 }
 
 type ParsedEvent struct {
-	Name     string `json:"name"`
-	Birthday string `json:"birthday"` // YYYY-MM-DD
-	Type     string `json:"type"`     // birthday, anniversary, etc.
+	Name         string `json:"name"`
+	Birthday     string `json:"birthday"` // YYYY-MM-DD
+	Relationship string `json:"relationship"`
+	Notes        string `json:"notes"`
 }
 
 type claudeMessage struct {
@@ -57,14 +58,18 @@ func ParseVoice(c *gin.Context) {
 	}
 
 	prompt := fmt.Sprintf(
-		`Extract event details from this voice transcript.
-Respond with raw JSON only — no markdown, no code blocks, no explanation.
-The JSON must have exactly three fields:
-- "name" (string): the person's name
-- "birthday" (string): the date in YYYY-MM-DD format, use %d if no year is mentioned
-- "type" (string): the event type — one of "birthday", "anniversary", "graduation", "other" — default to "birthday" if unclear
+		`You are a personal relationship assistant. Extract information from this voice transcript and return ONLY raw JSON, no markdown, no explanation.
 
-If you cannot extract name and date, return {"name": "", "birthday": "", "type": "birthday"}.
+Return this exact structure:
+{
+  "name": "the person's name",
+  "birthday": "date in YYYY-MM-DD format",
+  "relationship": "how the speaker knows this person, e.g. best friend, mum, colleague, brother",
+  "notes": "any other details mentioned like hobbies, interests, personality"
+}
+
+If a field is not mentioned return empty string.
+Assume year %d if no year mentioned.
 
 Transcript: %s`,
 		time.Now().Year(), req.Transcript,

@@ -61,6 +61,25 @@ func CreateEvent(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"id": id})
 }
 
+func GetEvent(c *gin.Context) {
+	id := c.Param("id")
+	var ev UpcomingEvent
+	var eventDate time.Time
+	err := DB.QueryRow(context.Background(),
+		`SELECT e.id, p.name, p.relationship, e.event_date, e.type, e.remind_days
+		 FROM events e
+		 JOIN people p ON p.id = e.person_id
+		 WHERE e.id = $1`,
+		id,
+	).Scan(&ev.ID, &ev.Name, &ev.Relationship, &eventDate, &ev.EventType, &ev.RemindDays)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "event not found"})
+		return
+	}
+	ev.Birthday = eventDate.Format("2006-01-02")
+	c.JSON(http.StatusOK, ev)
+}
+
 func GetUpcomingEvents(c *gin.Context) {
 	rows, err := DB.Query(context.Background(), `
 		SELECT

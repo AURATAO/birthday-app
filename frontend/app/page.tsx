@@ -3,11 +3,13 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 
-type AppState = 'idle' | 'listening' | 'processing' | 'result' | 'saving'
+type AppState = 'idle' | 'listening' | 'processing' | 'result' | 'saving' | 'saved'
 
-interface ParsedBirthday {
+interface ParsedEvent {
   name: string
   birthday: string
+  relationship: string
+  notes: string
 }
 
 interface Birthday {
@@ -37,14 +39,15 @@ function DaysUntilBadge({ days }: { days: number }) {
 
 export default function Dashboard() {
   const [appState, setAppState] = useState<AppState>('idle')
-  const [parsed, setParsed] = useState<ParsedBirthday | null>(null)
+  const [parsed, setParsed] = useState<ParsedEvent | null>(null)
   const [birthdays, setBirthdays] = useState<Birthday[]>([])
   const [error, setError] = useState('')
+  const [liveText, setLiveText] = useState('')
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null)
 
   useEffect(() => {
-    fetch('http://localhost:8080/api/birthdays')
+    fetch('http://localhost:8080/api/events/upcoming')
       .then((r) => r.json())
       .then((data) => setBirthdays(Array.isArray(data) ? data : []))
       .catch(() => {})
@@ -65,20 +68,34 @@ export default function Dashboard() {
     }
     const recognition = new SR()
     recognition.lang = 'en-US'
-    recognition.interimResults = false
+    recognition.interimResults = true
     recognition.maxAlternatives = 1
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onresult = async (event: any) => {
-      const text = event.results[0][0].transcript
-      setAppState('processing')
-      await parseTranscript(text)
+      let interim = ''
+      let final = ''
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) {
+          final += event.results[i][0].transcript
+        } else {
+          interim += event.results[i][0].transcript
+        }
+      }
+      if (interim) setLiveText(interim)
+      if (final) {
+        setLiveText('')
+        setAppState('processing')
+        await parseTranscript(final)
+      }
     }
     recognition.onerror = () => {
+      setLiveText('')
       setAppState('idle')
       setError('Could not hear you. Tap to try again.')
     }
     recognition.onend = () => {
+      setLiveText('')
       setAppState((s) => (s === 'listening' ? 'idle' : s))
     }
 
@@ -101,7 +118,12 @@ export default function Dashboard() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Parse failed')
-      setParsed(data)
+      setParsed({
+        name: data.name ?? '',
+        birthday: data.birthday ?? '',
+        relationship: data.relationship ?? '',
+        notes: data.notes ?? '',
+      })
       setAppState('result')
     } catch (e) {
       setError((e as Error).message)
@@ -113,18 +135,30 @@ export default function Dashboard() {
     if (!parsed) return
     setAppState('saving')
     try {
-      const res = await fetch('http://localhost:8080/api/birthdays', {
+      // Step 1: create the person
+      const personRes = await fetch('http://localhost:8080/api/people', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: parsed.name, birthday: parsed.birthday }),
+        body: JSON.stringify({ name: parsed.name, relationship: parsed.relationship, notes: parsed.notes }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Save failed')
+      const personData = await personRes.json()
+      if (!personRes.ok) throw new Error(personData.error || 'Failed to save person')
+
+      // Step 2: create the event linked to that person
+      const eventRes = await fetch('http://localhost:8080/api/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ person_id: personData.id, type: 'birthday', event_date: parsed.birthday }),
+      })
+      const eventData = await eventRes.json()
+      if (!eventRes.ok) throw new Error(eventData.error || 'Failed to save event')
+
       // Refresh list
-      const list = await fetch('http://localhost:8080/api/birthdays').then((r) => r.json())
+      const list = await fetch('http://localhost:8080/api/events/upcoming').then((r) => r.json())
       setBirthdays(Array.isArray(list) ? list : [])
       setParsed(null)
-      setAppState('idle')
+      setAppState('saved')
+      setTimeout(() => setAppState('idle'), 2000)
     } catch (e) {
       setError((e as Error).message)
       setAppState('result')
@@ -140,6 +174,7 @@ export default function Dashboard() {
   const isListening = appState === 'listening'
   const isBusy = appState === 'processing' || appState === 'saving'
   const isResult = appState === 'result'
+  const isSaved = appState === 'saved'
 
   return (
     <div className="relative flex h-screen w-full flex-col overflow-hidden bg-[#080c18] text-white">
@@ -203,6 +238,9 @@ export default function Dashboard() {
               isResult
                 ? 'bg-gradient-to-br from-emerald-500 to-teal-700 shadow-[0_0_70px_rgba(16,185,129,0.4)]'
                 : '',
+              isSaved
+                ? 'bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-[0_0_90px_rgba(52,211,153,0.6)]'
+                : '',
             ].join(' ')}
             aria-label={isListening ? 'Stop recording' : 'Start recording'}
           >
@@ -222,8 +260,8 @@ export default function Dashboard() {
               </svg>
             )}
 
-            {/* Check icon */}
-            {isResult && (
+            {/* Check icon — review state or saved state */}
+            {(isResult || isSaved) && (
               <svg className="h-14 w-14 text-white drop-shadow-lg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
@@ -237,8 +275,8 @@ export default function Dashboard() {
             <p className="text-base font-light tracking-wide text-white/40">Tap to add a birthday</p>
           )}
           {isListening && (
-            <p className="animate-pulse text-base font-medium tracking-wide text-blue-400">
-              Listening…
+            <p className={liveText ? 'text-base font-medium text-white/80' : 'animate-pulse text-base font-medium tracking-wide text-blue-400'}>
+              {liveText || 'Listening…'}
             </p>
           )}
           {appState === 'processing' && (
@@ -247,26 +285,8 @@ export default function Dashboard() {
           {appState === 'saving' && (
             <p className="text-base font-light text-white/40">Saving…</p>
           )}
-
-          {isResult && parsed && (
-            <div className="flex flex-col items-center gap-2">
-              <p className="text-3xl font-bold text-white">{parsed.name}</p>
-              <p className="text-base text-white/50">{formatDate(parsed.birthday)}</p>
-              <div className="mt-4 flex gap-3">
-                <button
-                  onClick={confirmSave}
-                  className="rounded-full bg-emerald-500 px-10 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-900/40 active:bg-emerald-600"
-                >
-                  Save
-                </button>
-                <button
-                  onClick={discard}
-                  className="rounded-full bg-white/10 px-10 py-3 text-sm font-semibold text-white/60 active:bg-white/20"
-                >
-                  Discard
-                </button>
-              </div>
-            </div>
+          {isSaved && (
+            <p className="text-base font-semibold text-emerald-400">Saved!</p>
           )}
 
           {error && (
@@ -311,6 +331,64 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* ── Review modal ──────────────────────────────── */}
+      {isResult && parsed && (
+        <div className="absolute inset-0 z-50 flex flex-col justify-end">
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/60" onPointerDown={discard} />
+
+          {/* Sheet */}
+          <div className="relative rounded-t-3xl bg-[#111827] px-5 pb-10 pt-4 text-white">
+            {/* Handle */}
+            <div className="mx-auto mb-5 h-1 w-10 rounded-full bg-white/20" />
+
+            {/* Header */}
+            <div className="mb-4 flex items-center justify-between">
+              <p className="text-base font-semibold text-white/80">Confirm details</p>
+              <button onClick={discard} className="text-sm text-white/40 active:text-white/60">Cancel</button>
+            </div>
+
+            <div className="space-y-2">
+              <input
+                className="w-full rounded-xl bg-white/8 px-4 py-3 text-base font-medium text-white placeholder-white/25 outline-none focus:bg-white/12"
+                placeholder="Name"
+                value={parsed.name}
+                onChange={(e) => setParsed({ ...parsed, name: e.target.value })}
+              />
+              <input
+                type="date"
+                className="w-full rounded-xl bg-white/8 px-4 py-3 text-sm text-white/70 outline-none focus:bg-white/12"
+                value={parsed.birthday}
+                onChange={(e) => setParsed({ ...parsed, birthday: e.target.value })}
+              />
+              <input
+                className="w-full rounded-xl bg-white/8 px-4 py-3 text-sm text-white/70 placeholder-white/25 outline-none focus:bg-white/12"
+                placeholder="Relationship (e.g. best friend, mum)"
+                value={parsed.relationship}
+                onChange={(e) => setParsed({ ...parsed, relationship: e.target.value })}
+              />
+              <textarea
+                className="w-full rounded-xl bg-white/8 px-4 py-3 text-sm text-white/70 placeholder-white/25 outline-none focus:bg-white/12"
+                placeholder="Notes (e.g. loves hiking, into coffee)"
+                rows={2}
+                value={parsed.notes}
+                onChange={(e) => setParsed({ ...parsed, notes: e.target.value })}
+              />
+            </div>
+
+            {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
+
+            <button
+              onClick={confirmSave}
+              disabled={!parsed.name || !parsed.birthday}
+              className="mt-4 w-full rounded-full bg-emerald-500 py-4 text-base font-semibold text-white shadow-lg shadow-emerald-900/40 disabled:opacity-40 active:bg-emerald-600"
+            >
+              Save birthday
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

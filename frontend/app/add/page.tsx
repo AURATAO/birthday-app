@@ -130,7 +130,7 @@ export default function AddBirthday() {
         <div className="flex flex-col items-center rounded-2xl bg-white p-6 shadow-sm">
           <p className="mb-5 text-sm font-medium text-gray-500">
             Tap the mic and say something like&nbsp;
-            <span className="italic text-gray-700">"Marco's birthday is September 6th"</span>
+            <span className="italic text-gray-700">&ldquo;Marco&apos;s birthday is September 6th&rdquo;</span>
           </p>
 
           <button
@@ -156,7 +156,7 @@ export default function AddBirthday() {
             <p className="mt-4 text-sm font-medium text-gray-400">Parsing…</p>
           )}
           {transcript && !listening && !parsing && (
-            <p className="mt-4 text-center text-sm text-gray-500 italic">"{transcript}"</p>
+            <p className="mt-4 text-center text-sm text-gray-500 italic">&ldquo;{transcript}&rdquo;</p>
           )}
         </div>
 
