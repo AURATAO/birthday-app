@@ -1,5 +1,7 @@
 'use client'
 
+export const dynamic = 'force-dynamic'
+
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useSearchParams } from 'next/navigation'
@@ -61,7 +63,7 @@ export default function LoginPage() {
           </svg>
         </div>
         <h1 className="text-2xl font-bold text-white">Birthday</h1>
-        <p className="mt-1 text-sm text-white/40">Never forget the people you love</p>
+        <p className="mt-1 text-sm text-white/40">Never forget the people you care</p>
       </div>
 
       {/* Card */}
