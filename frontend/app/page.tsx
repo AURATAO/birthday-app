@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase'
 
 type AppState = 'idle' | 'listening' | 'processing' | 'result' | 'saving' | 'saved'
 
@@ -38,15 +40,22 @@ function DaysUntilBadge({ days }: { days: number }) {
 }
 
 export default function Dashboard() {
+  const router = useRouter()
+  const supabase = createClient()
+
   const [appState, setAppState] = useState<AppState>('idle')
   const [parsed, setParsed] = useState<ParsedEvent | null>(null)
   const [birthdays, setBirthdays] = useState<Birthday[]>([])
   const [error, setError] = useState('')
   const [liveText, setLiveText] = useState('')
+  const [userEmail, setUserEmail] = useState('')
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null)
 
   useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setUserEmail(user.email ?? user.user_metadata?.name ?? '')
+    })
     fetch('http://localhost:8080/api/events/upcoming')
       .then((r) => r.json())
       .then((data) => setBirthdays(Array.isArray(data) ? data : []))
@@ -165,6 +174,11 @@ export default function Dashboard() {
     }
   }
 
+  async function signOut() {
+    await supabase.auth.signOut()
+    router.push('/login')
+  }
+
   function discard() {
     setParsed(null)
     setError('')
@@ -178,9 +192,20 @@ export default function Dashboard() {
 
   return (
     <div className="relative flex h-screen w-full flex-col overflow-hidden bg-[#080c18] text-white">
-      {/* ── Top label ─────────────────────────────────── */}
-      <div className="pt-16 text-center">
-        <h1 className="text-xl font-semibold tracking-tight text-white/80">Birthday</h1>
+      {/* ── Top bar ───────────────────────────────────── */}
+      <div className="flex items-center justify-between px-5 pt-14 pb-2">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold tracking-tight text-white/80">Birthday</h1>
+          {userEmail && (
+            <p className="truncate text-xs text-white/30">{userEmail}</p>
+          )}
+        </div>
+        <button
+          onPointerDown={signOut}
+          className="rounded-full px-3 py-1.5 text-xs text-white/30 active:text-white/60"
+        >
+          Sign out
+        </button>
       </div>
 
       {/* ── Center stage ──────────────────────────────── */}
