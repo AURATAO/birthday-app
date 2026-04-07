@@ -71,7 +71,7 @@ export default function AddBirthday() {
     setParsing(true)
     setError('')
     try {
-      const res = await fetch('http://localhost:8080/api/voice/parse', {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/voice/parse`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ transcript: text }),
@@ -99,7 +99,7 @@ export default function AddBirthday() {
     setSaving(true)
     setError('')
     try {
-      const res = await fetch('http://localhost:8080/api/birthdays', {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/birthdays`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),

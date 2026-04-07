@@ -33,7 +33,7 @@ export default function CardPage() {
   const recognitionRef = useRef<any>(null)
 
   useEffect(() => {
-    fetch(`http://localhost:8080/api/events/${id}`)
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/events/${id}`)
       .then((r) => r.json())
       .then((data) => setEvent(data))
       .catch(() => setError('Could not load birthday details.'))
@@ -101,7 +101,7 @@ export default function CardPage() {
   async function generateCard(voiceTranscript: string) {
     setMessage('')
     try {
-      const res = await fetch('http://localhost:8080/api/card/generate', {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/card/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ birthday_id: id, voice_transcript: voiceTranscript }),

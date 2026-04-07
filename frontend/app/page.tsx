@@ -56,7 +56,7 @@ export default function Dashboard() {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) setUserEmail(user.email ?? user.user_metadata?.name ?? '')
     })
-    fetch('http://localhost:8080/api/events/upcoming')
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/events/upcoming`)
       .then((r) => r.json())
       .then((data) => setBirthdays(Array.isArray(data) ? data : []))
       .catch(() => {})
@@ -120,7 +120,7 @@ export default function Dashboard() {
 
   async function parseTranscript(text: string) {
     try {
-      const res = await fetch('http://localhost:8080/api/voice/parse', {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/voice/parse`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ transcript: text }),
@@ -145,7 +145,7 @@ export default function Dashboard() {
     setAppState('saving')
     try {
       // Step 1: create the person
-      const personRes = await fetch('http://localhost:8080/api/people', {
+      const personRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/people`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: parsed.name, relationship: parsed.relationship, notes: parsed.notes }),
@@ -154,7 +154,7 @@ export default function Dashboard() {
       if (!personRes.ok) throw new Error(personData.error || 'Failed to save person')
 
       // Step 2: create the event linked to that person
-      const eventRes = await fetch('http://localhost:8080/api/events', {
+      const eventRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/events`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ person_id: personData.id, type: 'birthday', event_date: parsed.birthday }),
@@ -163,7 +163,7 @@ export default function Dashboard() {
       if (!eventRes.ok) throw new Error(eventData.error || 'Failed to save event')
 
       // Refresh list
-      const list = await fetch('http://localhost:8080/api/events/upcoming').then((r) => r.json())
+      const list = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/events/upcoming`).then((r) => r.json())
       setBirthdays(Array.isArray(list) ? list : [])
       setParsed(null)
       setAppState('saved')
