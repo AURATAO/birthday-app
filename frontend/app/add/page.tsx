@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { apiFetch } from '@/lib/api'
 
 interface FormData {
   name: string
@@ -83,9 +84,8 @@ export default function AddBirthday() {
     setParsing(true)
     setError('')
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/voice/parse`, {
+      const res = await apiFetch('/api/voice/parse', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ transcript: text }),
       })
       const data = await res.json()
@@ -111,9 +111,8 @@ export default function AddBirthday() {
     setSaving(true)
     setError('')
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/birthdays`, {
+      const res = await apiFetch('/api/birthdays', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
       })
       const data = await res.json()
