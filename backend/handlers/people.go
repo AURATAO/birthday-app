@@ -18,6 +18,7 @@ type CreatePersonRequest struct {
 	Name         string `json:"name" binding:"required"`
 	Relationship string `json:"relationship"`
 	Notes        string `json:"notes"`
+	Language     string `json:"language"`
 }
 
 func CreatePerson(c *gin.Context) {
@@ -29,8 +30,8 @@ func CreatePerson(c *gin.Context) {
 
 	var id string
 	err := DB.QueryRow(context.Background(),
-		`INSERT INTO people (name, relationship, notes) VALUES ($1, $2, $3) RETURNING id`,
-		req.Name, req.Relationship, req.Notes,
+		`INSERT INTO people (name, relationship, notes, language) VALUES ($1, $2, $3, $4) RETURNING id`,
+		req.Name, req.Relationship, req.Notes, req.Language,
 	).Scan(&id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

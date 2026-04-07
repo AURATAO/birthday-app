@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -24,8 +24,19 @@ export default function AddBirthday() {
     relationship: '',
     notes: '',
   })
+  const [speechLang, setSpeechLang] = useState('en-US')
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null)
+
+  useEffect(() => {
+    const saved = localStorage.getItem('speech-lang')
+    setSpeechLang(saved || navigator.language || 'en-US')
+  }, [])
+
+  function setLang(lang: string) {
+    setSpeechLang(lang)
+    localStorage.setItem('speech-lang', lang)
+  }
 
   function startListening() {
     setError('')
@@ -38,7 +49,8 @@ export default function AddBirthday() {
     }
 
     const recognition = new SR()
-    recognition.lang = 'en-US'
+    recognition.lang = speechLang
+    recognition.continuous = false
     recognition.interimResults = false
     recognition.maxAlternatives = 1
 
@@ -158,6 +170,34 @@ export default function AddBirthday() {
           {transcript && !listening && !parsing && (
             <p className="mt-4 text-center text-sm text-gray-500 italic">&ldquo;{transcript}&rdquo;</p>
           )}
+
+          {/* Language toggle */}
+          <div className="mt-5 flex gap-1 rounded-full bg-gray-100 p-1">
+            <button
+              type="button"
+              onPointerDown={() => setLang('en-US')}
+              className={[
+                'rounded-full px-4 py-1.5 text-xs font-medium transition-colors',
+                speechLang === 'en-US'
+                  ? 'bg-white text-gray-800 shadow-sm'
+                  : 'text-gray-400 active:text-gray-600',
+              ].join(' ')}
+            >
+              🇺🇸 EN
+            </button>
+            <button
+              type="button"
+              onPointerDown={() => setLang('zh-TW')}
+              className={[
+                'rounded-full px-4 py-1.5 text-xs font-medium transition-colors',
+                speechLang === 'zh-TW'
+                  ? 'bg-white text-gray-800 shadow-sm'
+                  : 'text-gray-400 active:text-gray-600',
+              ].join(' ')}
+            >
+              🇹🇼 中文
+            </button>
+          </div>
         </div>
 
         {/* Form */}

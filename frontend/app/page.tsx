@@ -12,6 +12,7 @@ interface ParsedEvent {
   birthday: string
   relationship: string
   notes: string
+  language: string
 }
 
 interface Birthday {
@@ -47,12 +48,14 @@ export default function Dashboard() {
   const [parsed, setParsed] = useState<ParsedEvent | null>(null)
   const [birthdays, setBirthdays] = useState<Birthday[]>([])
   const [error, setError] = useState('')
-  const [liveText, setLiveText] = useState('')
   const [userEmail, setUserEmail] = useState('')
+  const [speechLang, setSpeechLang] = useState('en-US')
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null)
 
   useEffect(() => {
+    const saved = localStorage.getItem('speech-lang')
+    setSpeechLang(saved || navigator.language || 'en-US')
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) setUserEmail(user.email ?? user.user_metadata?.name ?? '')
     })
@@ -67,6 +70,11 @@ export default function Dashboard() {
     else if (appState === 'listening') stopListening()
   }
 
+  function setLang(lang: string) {
+    setSpeechLang(lang)
+    localStorage.setItem('speech-lang', lang)
+  }
+
   function startListening() {
     setError('')
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -76,35 +84,22 @@ export default function Dashboard() {
       return
     }
     const recognition = new SR()
-    recognition.lang = 'en-US'
-    recognition.interimResults = true
+    recognition.lang = speechLang
+    recognition.continuous = false
+    recognition.interimResults = false
     recognition.maxAlternatives = 1
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onresult = async (event: any) => {
-      let interim = ''
-      let final = ''
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        if (event.results[i].isFinal) {
-          final += event.results[i][0].transcript
-        } else {
-          interim += event.results[i][0].transcript
-        }
-      }
-      if (interim) setLiveText(interim)
-      if (final) {
-        setLiveText('')
-        setAppState('processing')
-        await parseTranscript(final)
-      }
+      const text = event.results[0][0].transcript
+      setAppState('processing')
+      await parseTranscript(text)
     }
     recognition.onerror = () => {
-      setLiveText('')
       setAppState('idle')
       setError('Could not hear you. Tap to try again.')
     }
     recognition.onend = () => {
-      setLiveText('')
       setAppState((s) => (s === 'listening' ? 'idle' : s))
     }
 
@@ -132,6 +127,7 @@ export default function Dashboard() {
         birthday: data.birthday ?? '',
         relationship: data.relationship ?? '',
         notes: data.notes ?? '',
+        language: data.language ?? '',
       })
       setAppState('result')
     } catch (e) {
@@ -148,7 +144,7 @@ export default function Dashboard() {
       const personRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/people`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: parsed.name, relationship: parsed.relationship, notes: parsed.notes }),
+        body: JSON.stringify({ name: parsed.name, relationship: parsed.relationship, notes: parsed.notes, language: parsed.language }),
       })
       const personData = await personRes.json()
       if (!personRes.ok) throw new Error(personData.error || 'Failed to save person')
@@ -300,8 +296,8 @@ export default function Dashboard() {
             <p className="text-base font-light tracking-wide text-white/40">Tap to add a birthday</p>
           )}
           {isListening && (
-            <p className={liveText ? 'text-base font-medium text-white/80' : 'animate-pulse text-base font-medium tracking-wide text-blue-400'}>
-              {liveText || 'Listening…'}
+            <p className="animate-pulse text-base font-medium tracking-wide text-blue-400">
+              Listening…
             </p>
           )}
           {appState === 'processing' && (
@@ -318,6 +314,34 @@ export default function Dashboard() {
             <p className="mt-3 text-sm text-red-400">{error}</p>
           )}
         </div>
+
+        {/* ── Language toggle ───────────────────────────── */}
+        {!isBusy && !isResult && (
+          <div className="mt-6 flex gap-1 rounded-full bg-white/6 p-1">
+            <button
+              onPointerDown={() => setLang('en-US')}
+              className={[
+                'rounded-full px-4 py-1.5 text-xs font-medium transition-colors',
+                speechLang === 'en-US'
+                  ? 'bg-white/15 text-white'
+                  : 'text-white/35 active:text-white/60',
+              ].join(' ')}
+            >
+              🇺🇸 EN
+            </button>
+            <button
+              onPointerDown={() => setLang('zh-TW')}
+              className={[
+                'rounded-full px-4 py-1.5 text-xs font-medium transition-colors',
+                speechLang === 'zh-TW'
+                  ? 'bg-white/15 text-white'
+                  : 'text-white/35 active:text-white/60',
+              ].join(' ')}
+            >
+              🇹🇼 中文
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── Bottom sheet ───────────────────────────────── */}

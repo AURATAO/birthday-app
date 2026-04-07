@@ -22,6 +22,7 @@ type ParsedEvent struct {
 	Birthday     string `json:"birthday"` // YYYY-MM-DD
 	Relationship string `json:"relationship"`
 	Notes        string `json:"notes"`
+	Language     string `json:"language"`
 }
 
 type claudeMessage struct {
@@ -58,14 +59,18 @@ func ParseVoice(c *gin.Context) {
 	}
 
 	prompt := fmt.Sprintf(
-		`You are a personal relationship assistant. Extract information from this voice transcript and return ONLY raw JSON, no markdown, no explanation.
+		`You are a multilingual personal relationship assistant.
+The user may speak in ANY language — English, Mandarin, Cantonese, Italian, French, Japanese, etc.
 
-Return this exact structure:
+Detect the language from this transcript and respond in the SAME language.
+
+Extract and return ONLY raw JSON, no markdown, no explanation:
 {
-  "name": "the person's name",
+  "name": "person's name",
   "birthday": "date in YYYY-MM-DD format",
-  "relationship": "how the speaker knows this person, e.g. best friend, mum, colleague, brother",
-  "notes": "any other details mentioned like hobbies, interests, personality"
+  "relationship": "relationship in same language as transcript",
+  "notes": "any details in same language as transcript",
+  "language": "detected language code e.g. zh-TW, en, it, fr, ja"
 }
 
 If a field is not mentioned return empty string.

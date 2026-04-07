@@ -32,15 +32,15 @@ func GenerateCard(c *gin.Context) {
 	}
 
 	// Fetch person + event details by event ID
-	var name, relationship, notes string
+	var name, relationship, notes, language string
 	var birthdayDate time.Time
 	err := DB.QueryRow(context.Background(),
-		`SELECT p.name, e.event_date, p.relationship, p.notes
+		`SELECT p.name, e.event_date, p.relationship, p.notes, COALESCE(p.language, '') as language
 		 FROM events e
 		 JOIN people p ON p.id = e.person_id
 		 WHERE e.id = $1`,
 		req.BirthdayID,
-	).Scan(&name, &birthdayDate, &relationship, &notes)
+	).Scan(&name, &birthdayDate, &relationship, &notes, &language)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "birthday not found"})
 		return
@@ -56,9 +56,14 @@ func GenerateCard(c *gin.Context) {
 		notesLine = fmt.Sprintf("Notes about them: %s\n", notes)
 	}
 
+	languageLine := ""
+	if language != "" {
+		languageLine = fmt.Sprintf("\nWrite the birthday message in this language: %s\nMake it feel natural and warm in that language, not like a translation.\n", language)
+	}
+
 	prompt := fmt.Sprintf(
 		`Write a warm, personal birthday message for %s, who is turning %d on %s.
-%s%sThe sender recorded this voice note about what they want to say: "%s"
+%s%s%sThe sender recorded this voice note about what they want to say: "%s"
 
 Write the message as if from the sender directly to %s. Make it heartfelt and specific to the details above.
 Keep it to 3–5 sentences. Do not add a subject line or sign-off — just the message body.`,
@@ -67,6 +72,7 @@ Keep it to 3–5 sentences. Do not add a subject line or sign-off — just the m
 		birthdayDate.Format("January 2"),
 		relationshipLine,
 		notesLine,
+		languageLine,
 		req.VoiceTranscript,
 		name,
 	)

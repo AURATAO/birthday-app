@@ -117,11 +117,18 @@ export default function CardPage() {
   }
 
   function sendViaWhatsApp() {
-    window.location.href = `whatsapp://send?text=${encodeURIComponent(message)}`
+    const text = encodeURIComponent(message)
+    window.open(`whatsapp://send?text=${text}`)
   }
 
   function sendViaIMessage() {
-    window.location.href = `sms:?&body=${encodeURIComponent(message)}`
+    const text = encodeURIComponent(message)
+    window.open(`sms:&body=${text}`)
+  }
+
+  function sendViaEmail() {
+    const text = encodeURIComponent(message)
+    window.open(`mailto:?subject=Happy Birthday!&body=${text}`)
   }
 
   const isListening = cardState === 'listening'
@@ -266,6 +273,16 @@ export default function CardPage() {
               <path d="M12 2C6.477 2 2 6.145 2 11.243c0 2.908 1.405 5.51 3.6 7.24L4.5 22l3.558-1.738A10.786 10.786 0 0012 20.485c5.523 0 10-4.144 10-9.242S17.523 2 12 2z" />
             </svg>
             Send via iMessage
+          </button>
+
+          <button
+            onClick={sendViaEmail}
+            className="flex h-14 w-full items-center justify-center gap-3 rounded-full bg-[#6B7280] text-base font-semibold text-white shadow-lg shadow-gray-900/30 active:opacity-90"
+          >
+            <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4-8 5-8-5V6l8 5 8-5v2z" />
+            </svg>
+            Send via Email
           </button>
         </div>
       )}
