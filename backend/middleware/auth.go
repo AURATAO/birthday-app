@@ -33,7 +33,7 @@ func AuthMiddleware() gin.HandlerFunc {
 		req, _ := http.NewRequest("GET",
 			os.Getenv("SUPABASE_URL")+"/auth/v1/user", nil)
 		req.Header.Set("Authorization", "Bearer "+token)
-		req.Header.Set("apikey", os.Getenv("SUPABASE_ANON_KEY"))
+		req.Header["apikey"] = []string{os.Getenv("SUPABASE_ANON_KEY")}
 
 		client := &http.Client{}
 		resp, err := client.Do(req)
