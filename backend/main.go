@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"birthday-app/handlers"
+	"birthday-app/middleware"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -48,6 +49,7 @@ func main() {
 	})
 
 	api := r.Group("/api")
+	api.Use(middleware.AuthMiddleware())
 	{
 		api.POST("/people", handlers.CreatePerson)
 		api.POST("/events", handlers.CreateEvent)

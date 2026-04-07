@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
+import { getAuthHeaders } from '@/lib/auth'
 
 type AppState = 'idle' | 'listening' | 'processing' | 'result' | 'saving' | 'saved'
 
@@ -59,10 +60,12 @@ export default function Dashboard() {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) setUserEmail(user.email ?? user.user_metadata?.name ?? '')
     })
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/events/upcoming`)
-      .then((r) => r.json())
-      .then((data) => setBirthdays(Array.isArray(data) ? data : []))
-      .catch(() => {})
+    getAuthHeaders().then((headers) =>
+      fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/events/upcoming`, { headers })
+        .then((r) => r.json())
+        .then((data) => setBirthdays(Array.isArray(data) ? data : []))
+        .catch(() => {})
+    )
   }, [])
 
   function handleButtonTap() {
@@ -117,7 +120,7 @@ export default function Dashboard() {
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/voice/parse`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthHeaders(),
         body: JSON.stringify({ transcript: text }),
       })
       const data = await res.json()
@@ -140,10 +143,12 @@ export default function Dashboard() {
     if (!parsed) return
     setAppState('saving')
     try {
+      const authHeaders = await getAuthHeaders()
+
       // Step 1: create the person
       const personRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/people`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({ name: parsed.name, relationship: parsed.relationship, notes: parsed.notes, language: parsed.language }),
       })
       const personData = await personRes.json()
@@ -152,14 +157,14 @@ export default function Dashboard() {
       // Step 2: create the event linked to that person
       const eventRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/events`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({ person_id: personData.id, type: 'birthday', event_date: parsed.birthday }),
       })
       const eventData = await eventRes.json()
       if (!eventRes.ok) throw new Error(eventData.error || 'Failed to save event')
 
       // Refresh list
-      const list = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/events/upcoming`).then((r) => r.json())
+      const list = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/events/upcoming`, { headers: authHeaders }).then((r) => r.json())
       setBirthdays(Array.isArray(list) ? list : [])
       setParsed(null)
       setAppState('saved')

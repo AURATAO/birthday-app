@@ -28,10 +28,12 @@ func CreatePerson(c *gin.Context) {
 		return
 	}
 
+	userID, _ := c.Get("user_id")
+
 	var id string
 	err := DB.QueryRow(context.Background(),
-		`INSERT INTO people (name, relationship, notes, language) VALUES ($1, $2, $3, $4) RETURNING id`,
-		req.Name, req.Relationship, req.Notes, req.Language,
+		`INSERT INTO people (user_id, name, relationship, notes, language) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+		userID, req.Name, req.Relationship, req.Notes, req.Language,
 	).Scan(&id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

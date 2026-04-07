@@ -46,12 +46,14 @@ func CreateEvent(c *gin.Context) {
 		recurring = *req.Recurring
 	}
 
+	userID, _ := c.Get("user_id")
+
 	var id string
 	err := DB.QueryRow(context.Background(),
-		`INSERT INTO events (person_id, type, event_date, title, remind_days, recurring)
-		 VALUES ($1, $2, $3, $4, $5, $6)
+		`INSERT INTO events (user_id, person_id, type, event_date, title, remind_days, recurring)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
 		 RETURNING id`,
-		req.PersonID, req.Type, req.EventDate, req.Title, remindDays, recurring,
+		userID, req.PersonID, req.Type, req.EventDate, req.Title, remindDays, recurring,
 	).Scan(&id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -81,6 +83,8 @@ func GetEvent(c *gin.Context) {
 }
 
 func GetUpcomingEvents(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+
 	rows, err := DB.Query(context.Background(), `
 		SELECT
 		  e.id,
@@ -96,8 +100,9 @@ func GetUpcomingEvents(c *gin.Context) {
 		  END AS days_until
 		FROM events e
 		JOIN people p ON p.id = e.person_id
+		WHERE e.user_id = $1
 		ORDER BY days_until ASC
-	`)
+	`, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

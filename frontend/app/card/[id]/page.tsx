@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
+import { getAuthHeaders } from '@/lib/auth'
 
 interface EventDetail {
   id: string
@@ -33,10 +34,12 @@ export default function CardPage() {
   const recognitionRef = useRef<any>(null)
 
   useEffect(() => {
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/events/${id}`)
-      .then((r) => r.json())
-      .then((data) => setEvent(data))
-      .catch(() => setError('Could not load birthday details.'))
+    getAuthHeaders().then((headers) =>
+      fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/events/${id}`, { headers })
+        .then((r) => r.json())
+        .then((data) => setEvent(data))
+        .catch(() => setError('Could not load birthday details.'))
+    )
   }, [id])
 
   function handleMicTap() {
@@ -103,7 +106,7 @@ export default function CardPage() {
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/card/generate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthHeaders(),
         body: JSON.stringify({ birthday_id: id, voice_transcript: voiceTranscript }),
       })
       const data = await res.json()
