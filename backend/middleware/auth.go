@@ -31,9 +31,9 @@ func AuthMiddleware() gin.HandlerFunc {
 		log.Printf("Token length: %d", len(token))
 
 		req, _ := http.NewRequest("GET",
-			os.Getenv("SUPABASE_URL")+"/auth/v1/user", nil)
+			os.Getenv("SUPABASE_URL")+"/auth/v1/user?apikey="+os.Getenv("SUPABASE_ANON_KEY"),
+			nil)
 		req.Header.Set("Authorization", "Bearer "+token)
-		req.Header["apikey"] = []string{os.Getenv("SUPABASE_ANON_KEY")}
 
 		client := &http.Client{}
 		resp, err := client.Do(req)
