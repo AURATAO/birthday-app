@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -10,15 +10,19 @@ import {
   Alert,
   Platform,
   KeyboardAvoidingView,
+  Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import Voice, { SpeechResultsEvent, SpeechErrorEvent } from '@react-native-voice/voice';
 import { parseVoice, createPerson, createEvent } from '../lib/api';
+import { getLanguage } from '../lib/storage';
 import { Colors, Spacing, Radius, Typography } from '../constants/theme';
 
 export default function AddScreen() {
   const router = useRouter();
 
+  const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -29,11 +33,88 @@ export default function AddScreen() {
   const [notes, setNotes] = useState('');
   const [phone, setPhone] = useState('');
 
-  async function handleParse() {
-    if (!transcript.trim()) return;
+  // Keep a ref so onSpeechEnd can read the latest transcript without stale closure
+  const transcriptRef = useRef('');
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
+
+  useEffect(() => {
+    Voice.onSpeechPartialResults = (e: SpeechResultsEvent) => {
+      const partial = e.value?.[0] ?? '';
+      transcriptRef.current = partial;
+      setTranscript(partial);
+    };
+
+    Voice.onSpeechResults = (e: SpeechResultsEvent) => {
+      const result = e.value?.[0] ?? '';
+      transcriptRef.current = result;
+      setTranscript(result);
+    };
+
+    Voice.onSpeechEnd = () => {
+      setIsListening(false);
+      stopPulse();
+      // Auto-parse when speech ends if we have a transcript
+      if (transcriptRef.current.trim()) {
+        autoParse(transcriptRef.current.trim());
+      }
+    };
+
+    Voice.onSpeechError = (e: SpeechErrorEvent) => {
+      setIsListening(false);
+      stopPulse();
+      const code = e.error?.code;
+      // code 5 = no speech detected — not an error worth alerting
+      if (code !== '5' && code !== 5 as any) {
+        Alert.alert('Voice error', e.error?.message ?? 'Unknown error');
+      }
+    };
+
+    return () => {
+      Voice.destroy().then(() => Voice.removeAllListeners());
+    };
+  }, []);
+
+  function startPulse() {
+    pulseLoop.current = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.18, duration: 600, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+      ])
+    );
+    pulseLoop.current.start();
+  }
+
+  function stopPulse() {
+    pulseLoop.current?.stop();
+    pulseAnim.setValue(1);
+  }
+
+  async function startListening() {
+    try {
+      transcriptRef.current = '';
+      setTranscript('');
+      const lang = await getLanguage();
+      await Voice.start(lang === 'zh' ? 'zh-TW' : 'en-US');
+      setIsListening(true);
+      startPulse();
+    } catch (err: any) {
+      Alert.alert('Could not start microphone', err.message);
+    }
+  }
+
+  async function stopListening() {
+    try {
+      await Voice.stop();
+    } catch {}
+    setIsListening(false);
+    stopPulse();
+  }
+
+  async function autoParse(text: string) {
     setParsing(true);
     try {
-      const parsed = await parseVoice(transcript.trim());
+      const parsed = await parseVoice(text);
       if (parsed.name) setName(parsed.name);
       if (parsed.birthday) setBirthday(parsed.birthday);
       if (parsed.relationship) setRelationship(parsed.relationship);
@@ -43,6 +124,11 @@ export default function AddScreen() {
     } finally {
       setParsing(false);
     }
+  }
+
+  async function handleParse() {
+    if (!transcript.trim()) return;
+    await autoParse(transcript.trim());
   }
 
   async function handleSave() {
@@ -94,30 +180,45 @@ export default function AddScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Voice transcript — text for now, voice enabled with EAS build */}
+        {/* Mic button */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Voice transcript</Text>
-          <TextInput
-            style={[styles.input, styles.inputMultiline]}
-            placeholder={'e.g. "My mom\'s birthday is March 15, she loves cooking..."'}
-            placeholderTextColor={Colors.textMuted}
-            value={transcript}
-            onChangeText={setTranscript}
-            multiline
-            textAlignVertical="top"
-          />
-          <TouchableOpacity
-            style={[styles.parseBtn, (!transcript.trim() || parsing) && styles.btnDisabled]}
-            onPress={handleParse}
-            disabled={!transcript.trim() || parsing}
-            activeOpacity={0.8}
-          >
-            {parsing ? (
-              <ActivityIndicator color={Colors.primary} size="small" />
-            ) : (
-              <Text style={styles.parseBtnText}>Auto-fill from transcript</Text>
-            )}
-          </TouchableOpacity>
+          <Text style={styles.sectionLabel}>Voice input</Text>
+
+          <View style={styles.micRow}>
+            <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+              <TouchableOpacity
+                style={[styles.micBtn, isListening && styles.micBtnActive]}
+                onPress={isListening ? stopListening : startListening}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.micIcon}>{isListening ? '⏹' : '🎤'}</Text>
+              </TouchableOpacity>
+            </Animated.View>
+            <Text style={styles.micHint}>
+              {isListening ? 'Listening… tap to stop' : 'Tap to speak'}
+            </Text>
+          </View>
+
+          {transcript ? (
+            <View style={styles.transcriptBox}>
+              <Text style={styles.transcriptText}>{transcript}</Text>
+            </View>
+          ) : null}
+
+          {transcript ? (
+            <TouchableOpacity
+              style={[styles.parseBtn, parsing && styles.btnDisabled]}
+              onPress={handleParse}
+              disabled={parsing}
+              activeOpacity={0.8}
+            >
+              {parsing ? (
+                <ActivityIndicator color={Colors.primary} size="small" />
+              ) : (
+                <Text style={styles.parseBtnText}>Auto-fill from transcript</Text>
+              )}
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         <View style={styles.divider} />
@@ -242,6 +343,48 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1.1,
+  },
+  micRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.lg,
+    paddingVertical: Spacing.sm,
+  },
+  micBtn: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: Colors.surface,
+    borderWidth: 1.5,
+    borderColor: Colors.surfaceHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  micBtnActive: {
+    backgroundColor: 'rgba(226, 75, 74, 0.15)',
+    borderColor: Colors.danger,
+  },
+  micIcon: {
+    fontSize: 26,
+  },
+  micHint: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    fontWeight: '500',
+  },
+  transcriptBox: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 13,
+    borderWidth: 1,
+    borderColor: Colors.surfaceHigh,
+    minHeight: 60,
+  },
+  transcriptText: {
+    color: Colors.textPrimary,
+    fontSize: 15,
+    lineHeight: 22,
   },
   input: {
     backgroundColor: Colors.surface,

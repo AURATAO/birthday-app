@@ -11,10 +11,13 @@ import {
   ScrollView,
   Platform,
   KeyboardAvoidingView,
+  Animated,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import Voice, { SpeechResultsEvent, SpeechErrorEvent } from '@react-native-voice/voice';
 import { getEvent, generateCard, updateCard, sendCard } from '../../lib/api';
+import { getLanguage } from '../../lib/storage';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 
 function daysUntilBirthday(birthdayStr: string): number {
@@ -34,14 +37,17 @@ export default function CardScreen() {
   const [daysUntil, setDaysUntil] = useState(0);
   const [loadingEvent, setLoadingEvent] = useState(true);
 
+  const [isListening, setIsListening] = useState(false);
   const [voiceNote, setVoiceNote] = useState('');
   const [generating, setGenerating] = useState(false);
 
   const [cardId, setCardId] = useState('');
   const [message, setMessage] = useState('');
 
-  // Debounced save for edited message
+  const voiceNoteRef = useRef('');
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
 
   useEffect(() => {
     getEvent(id)
@@ -53,6 +59,77 @@ export default function CardScreen() {
       .finally(() => setLoadingEvent(false));
   }, [id]);
 
+  useEffect(() => {
+    Voice.onSpeechPartialResults = (e: SpeechResultsEvent) => {
+      const partial = e.value?.[0] ?? '';
+      voiceNoteRef.current = partial;
+      setVoiceNote(partial);
+    };
+
+    Voice.onSpeechResults = (e: SpeechResultsEvent) => {
+      const result = e.value?.[0] ?? '';
+      voiceNoteRef.current = result;
+      setVoiceNote(result);
+    };
+
+    Voice.onSpeechEnd = () => {
+      setIsListening(false);
+      stopPulse();
+      if (voiceNoteRef.current.trim()) {
+        autoGenerate(voiceNoteRef.current.trim());
+      }
+    };
+
+    Voice.onSpeechError = (e: SpeechErrorEvent) => {
+      setIsListening(false);
+      stopPulse();
+      const code = e.error?.code;
+      if (code !== '5' && code !== 5 as any) {
+        Alert.alert('Voice error', e.error?.message ?? 'Unknown error');
+      }
+    };
+
+    return () => {
+      Voice.destroy().then(() => Voice.removeAllListeners());
+    };
+  }, []);
+
+  function startPulse() {
+    pulseLoop.current = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.18, duration: 600, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+      ])
+    );
+    pulseLoop.current.start();
+  }
+
+  function stopPulse() {
+    pulseLoop.current?.stop();
+    pulseAnim.setValue(1);
+  }
+
+  async function startListening() {
+    try {
+      voiceNoteRef.current = '';
+      setVoiceNote('');
+      const lang = await getLanguage();
+      await Voice.start(lang === 'zh' ? 'zh-TW' : 'en-US');
+      setIsListening(true);
+      startPulse();
+    } catch (err: any) {
+      Alert.alert('Could not start microphone', err.message);
+    }
+  }
+
+  async function stopListening() {
+    try {
+      await Voice.stop();
+    } catch {}
+    setIsListening(false);
+    stopPulse();
+  }
+
   function handleMessageChange(text: string) {
     setMessage(text);
     if (!cardId) return;
@@ -62,14 +139,10 @@ export default function CardScreen() {
     }, 1000);
   }
 
-  async function handleGenerate() {
-    if (!voiceNote.trim()) {
-      Alert.alert('Required', 'Tell me something about what you want to say.');
-      return;
-    }
+  async function autoGenerate(note: string) {
     setGenerating(true);
     try {
-      const data = await generateCard(id, voiceNote.trim());
+      const data = await generateCard(id, note);
       setCardId(data.id);
       setMessage(data.message);
     } catch (err: any) {
@@ -79,10 +152,17 @@ export default function CardScreen() {
     }
   }
 
+  async function handleGenerate() {
+    if (!voiceNote.trim()) {
+      Alert.alert('Required', 'Tell me something about what you want to say.');
+      return;
+    }
+    await autoGenerate(voiceNote.trim());
+  }
+
   async function share(channel: 'whatsapp' | 'imessage' | 'email') {
     if (!cardId) return;
 
-    // Mark card as sent, fire-and-forget — don't block the share
     sendCard(cardId, channel).catch(() => {});
 
     const msg = encodeURIComponent(message);
@@ -128,18 +208,39 @@ export default function CardScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Voice note input */}
+        {/* Voice + text input section */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Say anything you want to tell them</Text>
+
+          {/* Mic button */}
+          <View style={styles.micRow}>
+            <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+              <TouchableOpacity
+                style={[styles.micBtn, isListening && styles.micBtnActive]}
+                onPress={isListening ? stopListening : startListening}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.micIcon}>{isListening ? '⏹' : '🎤'}</Text>
+              </TouchableOpacity>
+            </Animated.View>
+            <Text style={styles.micHint}>
+              {isListening ? 'Listening… tap to stop' : 'Tap to speak'}
+            </Text>
+          </View>
+
           <TextInput
             style={[styles.input, styles.inputMultiline]}
             placeholder={`What do you want to say to ${personName || 'them'}?`}
             placeholderTextColor={Colors.textMuted}
             value={voiceNote}
-            onChangeText={setVoiceNote}
+            onChangeText={(text) => {
+              voiceNoteRef.current = text;
+              setVoiceNote(text);
+            }}
             multiline
             textAlignVertical="top"
           />
+
           <TouchableOpacity
             style={[styles.generateBtn, (generating || !voiceNote.trim()) && styles.btnDisabled]}
             onPress={handleGenerate}
@@ -250,6 +351,34 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1.1,
+  },
+  micRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.lg,
+    paddingVertical: Spacing.xs,
+  },
+  micBtn: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: Colors.surface,
+    borderWidth: 1.5,
+    borderColor: Colors.surfaceHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  micBtnActive: {
+    backgroundColor: 'rgba(226, 75, 74, 0.15)',
+    borderColor: Colors.danger,
+  },
+  micIcon: {
+    fontSize: 22,
+  },
+  micHint: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    fontWeight: '500',
   },
   input: {
     backgroundColor: Colors.surface,
