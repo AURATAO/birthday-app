@@ -3,6 +3,7 @@ import {
   View,
   Text,
   TouchableOpacity,
+
   StyleSheet,
   FlatList,
   Animated,
@@ -12,8 +13,6 @@ import {
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { supabase } from '../lib/supabase';
 import { getUpcomingBirthdays, deletePerson, UpcomingEvent } from '../lib/api';
 import { Colors, Spacing, Radius } from '../constants/theme';
@@ -103,55 +102,42 @@ export default function HomeScreen() {
   const greeting =
     hour < 12 ? 'good morning' : hour < 17 ? 'good afternoon' : 'good evening';
 
-  const renderRightActions = useCallback(
-    (item: UpcomingEvent) => (
-      <TouchableOpacity
-        style={styles.deleteAction}
-        onPress={() => handleDelete(item)}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.deleteActionText}>Delete</Text>
-      </TouchableOpacity>
-    ),
-    []
-  );
-
   const renderBirthday = useCallback(({ item }: { item: UpcomingEvent }) => {
     const isToday = item.days_until === 0;
     const isTomorrow = item.days_until === 1;
     const label = isToday ? 'Today!' : isTomorrow ? 'Tomorrow' : `in ${item.days_until} days`;
 
     return (
-      <ReanimatedSwipeable
-        renderRightActions={() => renderRightActions(item)}
-        overshootRight={false}
-        friction={2}
+      <TouchableOpacity
+        style={styles.birthdayCard}
+        onPress={() => router.push(`/card/${item.id}`)}
+        activeOpacity={0.75}
       >
+        <View style={styles.birthdayAvatar}>
+          <Text style={styles.birthdayEmoji}>🎂</Text>
+        </View>
+        <View style={styles.birthdayInfo}>
+          <Text style={styles.birthdayName}>{item.name}</Text>
+          <Text style={styles.birthdayDate}>
+            {item.relationship ? `${item.relationship} · ` : ''}{item.birthday}
+          </Text>
+        </View>
+        <View style={[styles.daysBadge, isToday && styles.daysBadgeToday]}>
+          <Text style={[styles.daysText, isToday && styles.daysTextToday]}>{label}</Text>
+        </View>
         <TouchableOpacity
-          style={styles.birthdayCard}
-          onPress={() => router.push(`/card/${item.id}`)}
-          activeOpacity={0.75}
+          style={styles.deleteBtn}
+          onPress={() => handleDelete(item)}
+          hitSlop={8}
         >
-          <View style={styles.birthdayAvatar}>
-            <Text style={styles.birthdayEmoji}>🎂</Text>
-          </View>
-          <View style={styles.birthdayInfo}>
-            <Text style={styles.birthdayName}>{item.name}</Text>
-            <Text style={styles.birthdayDate}>
-              {item.relationship ? `${item.relationship} · ` : ''}{item.birthday}
-            </Text>
-          </View>
-          <View style={[styles.daysBadge, isToday && styles.daysBadgeToday]}>
-            <Text style={[styles.daysText, isToday && styles.daysTextToday]}>{label}</Text>
-          </View>
+          <Text style={styles.deleteBtnText}>🗑</Text>
         </TouchableOpacity>
-      </ReanimatedSwipeable>
+      </TouchableOpacity>
     );
   }, []);
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <View style={styles.container}>
+    <View style={styles.container}>
         <StatusBar style="light" />
 
         {/* Header */}
@@ -207,7 +193,6 @@ export default function HomeScreen() {
           )}
         </View>
       </View>
-    </GestureHandlerRootView>
   );
 }
 
@@ -372,17 +357,11 @@ const styles = StyleSheet.create({
     marginTop: 40,
     fontSize: 15,
   },
-  deleteAction: {
-    backgroundColor: Colors.danger,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 88,
-    borderRadius: Radius.lg,
-    marginLeft: Spacing.sm,
+  deleteBtn: {
+    padding: Spacing.xs,
+    marginLeft: Spacing.xs,
   },
-  deleteActionText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 14,
+  deleteBtnText: {
+    fontSize: 16,
   },
 });
