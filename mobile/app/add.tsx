@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import Voice, { SpeechResultsEvent, SpeechErrorEvent } from '@react-native-voice/voice';
+import Voice, { SpeechResultsEvent, SpeechErrorEvent } from '@react-native-community/voice';
 import { parseVoice, createPerson, createEvent } from '../lib/api';
 import { getLanguage } from '../lib/storage';
 import { Colors, Spacing, Radius, Typography } from '../constants/theme';

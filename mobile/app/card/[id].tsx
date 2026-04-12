@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import Voice, { SpeechResultsEvent, SpeechErrorEvent } from '@react-native-voice/voice';
+import Voice, { SpeechResultsEvent, SpeechErrorEvent } from '@react-native-community/voice';
 import { getEvent, generateCard, updateCard, sendCard } from '../../lib/api';
 import { getLanguage } from '../../lib/storage';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
