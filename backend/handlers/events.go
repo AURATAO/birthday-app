@@ -101,6 +101,7 @@ func GetUpcomingEvents(c *gin.Context) {
 		FROM events e
 		JOIN people p ON p.id = e.person_id
 		WHERE e.user_id = $1
+		  AND p.deleted_at IS NULL
 		ORDER BY days_until ASC
 	`, userID)
 	if err != nil {

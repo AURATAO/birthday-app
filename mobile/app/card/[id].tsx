@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   TextInput,
-  Animated,
   ActivityIndicator,
   Alert,
   Linking,
@@ -15,86 +14,64 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import Voice from '@react-native-voice/voice';
-import { generateCard } from '../../lib/api';
+import { getEvent, generateCard, updateCard, sendCard } from '../../lib/api';
+import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 
-const LANGUAGE_KEY = 'app_language';
+function daysUntilBirthday(birthdayStr: string): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const [, month, day] = birthdayStr.split('-').map(Number);
+  let next = new Date(today.getFullYear(), month - 1, day);
+  if (next < today) next.setFullYear(today.getFullYear() + 1);
+  return Math.round((next.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
 
 export default function CardScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
 
-  const [isListening, setIsListening] = useState(false);
-  const [transcript, setTranscript] = useState('');
-  const [generatedMessage, setGeneratedMessage] = useState('');
-  const [generating, setGenerating] = useState(false);
   const [personName, setPersonName] = useState('');
   const [daysUntil, setDaysUntil] = useState(0);
-  const [language, setLanguage] = useState<'en' | 'zh'>('en');
+  const [loadingEvent, setLoadingEvent] = useState(true);
 
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
+  const [voiceNote, setVoiceNote] = useState('');
+  const [generating, setGenerating] = useState(false);
 
-  useEffect(() => {
-    // Load language preference
-    import('../../lib/storage').then(({ getLanguage }) =>
-      getLanguage().then((lang) => setLanguage(lang as 'en' | 'zh'))
-    ).catch(() => {});
+  const [cardId, setCardId] = useState('');
+  const [message, setMessage] = useState('');
 
-    Voice.onSpeechStart = () => setIsListening(true);
-    Voice.onSpeechEnd = () => setIsListening(false);
-    Voice.onSpeechError = () => setIsListening(false);
-    Voice.onSpeechResults = (e) => {
-      const text = e.value?.[0] ?? '';
-      setTranscript(text);
-    };
-
-    return () => {
-      Voice.destroy().then(Voice.removeAllListeners);
-      pulseLoop.current?.stop();
-    };
-  }, []);
+  // Debounced save for edited message
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (isListening) {
-      pulseLoop.current = Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.2, duration: 700, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
-        ])
-      );
-      pulseLoop.current.start();
-    } else {
-      pulseLoop.current?.stop();
-      Animated.timing(pulseAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+    getEvent(id)
+      .then((ev) => {
+        setPersonName(ev.name);
+        setDaysUntil(daysUntilBirthday(ev.birthday));
+      })
+      .catch((err) => Alert.alert('Error', err.message))
+      .finally(() => setLoadingEvent(false));
+  }, [id]);
 
-      if (transcript) {
-        handleGenerate(transcript);
-      }
-    }
-  }, [isListening]);
-
-  async function handleMicPress() {
-    if (isListening) {
-      await Voice.stop();
-      return;
-    }
-    setTranscript('');
-    try {
-      await Voice.start(language === 'zh' ? 'zh-CN' : 'en-US');
-    } catch (err: any) {
-      Alert.alert('Microphone error', err.message);
-    }
+  function handleMessageChange(text: string) {
+    setMessage(text);
+    if (!cardId) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      updateCard(cardId, text).catch(() => {});
+    }, 1000);
   }
 
-  async function handleGenerate(text: string) {
-    if (!text.trim()) return;
+  async function handleGenerate() {
+    if (!voiceNote.trim()) {
+      Alert.alert('Required', 'Tell me something about what you want to say.');
+      return;
+    }
     setGenerating(true);
     try {
-      const data = await generateCard(id, text, language);
-      setGeneratedMessage(data.message ?? data.card ?? '');
-      if (data.name) setPersonName(data.name);
-      if (data.days_until !== undefined) setDaysUntil(data.days_until);
+      const data = await generateCard(id, voiceNote.trim());
+      setCardId(data.id);
+      setMessage(data.message);
     } catch (err: any) {
       Alert.alert('Error', err.message);
     } finally {
@@ -102,15 +79,20 @@ export default function CardScreen() {
     }
   }
 
-  function share(platform: 'whatsapp' | 'imessage' | 'email') {
-    const msg = encodeURIComponent(generatedMessage);
+  async function share(channel: 'whatsapp' | 'imessage' | 'email') {
+    if (!cardId) return;
+
+    // Mark card as sent, fire-and-forget — don't block the share
+    sendCard(cardId, channel).catch(() => {});
+
+    const msg = encodeURIComponent(message);
     const urls: Record<string, string> = {
       whatsapp: `whatsapp://send?text=${msg}`,
       imessage: `sms:&body=${msg}`,
       email: `mailto:?subject=${encodeURIComponent('Happy Birthday!')}&body=${msg}`,
     };
-    Linking.openURL(urls[platform]).catch(() =>
-      Alert.alert('Could not open app', `Make sure ${platform} is installed.`)
+    Linking.openURL(urls[channel]).catch(() =>
+      Alert.alert('Could not open app', `Make sure ${channel} is installed.`)
     );
   }
 
@@ -124,64 +106,69 @@ export default function CardScreen() {
     >
       <StatusBar style="light" />
 
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
         <View style={styles.headerInfo}>
-          <Text style={styles.personName}>{personName || 'Birthday Card'}</Text>
-          {daysUntil > 0 || personName ? (
-            <Text style={styles.daysLabel}>{dayLabel}</Text>
-          ) : null}
+          {loadingEvent ? (
+            <ActivityIndicator color={Colors.primary} />
+          ) : (
+            <>
+              <Text style={styles.personName}>{personName || 'Birthday Card'}</Text>
+              {personName ? <Text style={styles.daysLabel}>{dayLabel}</Text> : null}
+            </>
+          )}
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        {/* Mic */}
-        <View style={styles.micSection}>
-          <Text style={styles.micPrompt}>
-            {language === 'zh'
-              ? '说说你想对他们说的话'
-              : 'Say anything you want to tell them'}
-          </Text>
-          <Animated.View style={[styles.micOuter, { transform: [{ scale: pulseAnim }] }]}>
-            <View style={styles.micRing}>
-              <TouchableOpacity
-                style={[styles.micButton, isListening && styles.micButtonActive]}
-                onPress={handleMicPress}
-                activeOpacity={0.9}
-              >
-                <Text style={styles.micIcon}>{isListening ? '⏹' : '🎤'}</Text>
-              </TouchableOpacity>
-            </View>
-          </Animated.View>
-
-          {transcript ? (
-            <Text style={styles.transcript}>"{transcript}"</Text>
-          ) : null}
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Voice note input */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Say anything you want to tell them</Text>
+          <TextInput
+            style={[styles.input, styles.inputMultiline]}
+            placeholder={`What do you want to say to ${personName || 'them'}?`}
+            placeholderTextColor={Colors.textMuted}
+            value={voiceNote}
+            onChangeText={setVoiceNote}
+            multiline
+            textAlignVertical="top"
+          />
+          <TouchableOpacity
+            style={[styles.generateBtn, (generating || !voiceNote.trim()) && styles.btnDisabled]}
+            onPress={handleGenerate}
+            disabled={generating || !voiceNote.trim()}
+            activeOpacity={0.85}
+          >
+            {generating ? (
+              <ActivityIndicator color={Colors.textPrimary} size="small" />
+            ) : (
+              <Text style={styles.generateBtnText}>✦ Generate message</Text>
+            )}
+          </TouchableOpacity>
         </View>
 
         {/* Generated message */}
-        {generating ? (
-          <View style={styles.generatingBox}>
-            <ActivityIndicator color="#FF6B6B" />
-            <Text style={styles.generatingText}>Crafting your message...</Text>
-          </View>
-        ) : generatedMessage ? (
-          <View style={styles.messageSection}>
-            <Text style={styles.messageSectionTitle}>
-              {language === 'zh' ? '你的祝福消息' : 'Your Birthday Message'}
-            </Text>
+        {message ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Your birthday message</Text>
             <TextInput
-              style={styles.messageInput}
-              value={generatedMessage}
-              onChangeText={setGeneratedMessage}
+              style={[styles.input, styles.messageInput]}
+              value={message}
+              onChangeText={handleMessageChange}
               multiline
               textAlignVertical="top"
-              placeholderTextColor="#555"
+              placeholderTextColor={Colors.textMuted}
             />
 
-            <View style={styles.shareButtons}>
+            {/* Share buttons */}
+            <View style={styles.shareRow}>
               <TouchableOpacity
                 style={[styles.shareBtn, styles.whatsappBtn]}
                 onPress={() => share('whatsapp')}
@@ -219,146 +206,112 @@ export default function CardScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A0A0A',
+    backgroundColor: Colors.background,
     paddingTop: Platform.OS === 'ios' ? 60 : 40,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 24,
-    marginBottom: 8,
-    gap: 16,
+    paddingHorizontal: Spacing.xl,
+    marginBottom: Spacing.lg,
+    gap: Spacing.lg,
   },
   backBtn: {
-    padding: 4,
+    padding: Spacing.xs,
   },
   backIcon: {
     fontSize: 24,
-    color: '#FFFFFF',
+    color: Colors.textPrimary,
   },
   headerInfo: {
     flex: 1,
   },
   personName: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    ...Typography.h2,
+    fontWeight: '600',
   },
   daysLabel: {
     fontSize: 13,
-    color: '#FF6B6B',
+    color: Colors.primary,
     marginTop: 2,
     fontWeight: '500',
   },
-  scrollContent: {
-    paddingBottom: 48,
+  scroll: {
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: 52,
+    gap: Spacing.xl,
   },
-  micSection: {
-    alignItems: 'center',
-    paddingVertical: 28,
-    paddingHorizontal: 24,
+  section: {
+    gap: Spacing.sm,
   },
-  micPrompt: {
-    color: '#888',
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  micOuter: {
-    width: 130,
-    height: 130,
-    borderRadius: 65,
-    backgroundColor: 'rgba(255, 107, 107, 0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  micRing: {
-    width: 106,
-    height: 106,
-    borderRadius: 53,
-    backgroundColor: 'rgba(255, 107, 107, 0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  micButton: {
-    width: 82,
-    height: 82,
-    borderRadius: 41,
-    backgroundColor: '#FF6B6B',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#FF6B6B',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  micButtonActive: {
-    backgroundColor: '#FF3B3B',
-  },
-  micIcon: {
-    fontSize: 30,
-  },
-  transcript: {
-    marginTop: 20,
-    color: '#AAA',
-    fontSize: 14,
-    fontStyle: 'italic',
-    textAlign: 'center',
-    paddingHorizontal: 24,
-  },
-  generatingBox: {
-    alignItems: 'center',
-    paddingVertical: 32,
-    gap: 12,
-  },
-  generatingText: {
-    color: '#888',
-    fontSize: 14,
-  },
-  messageSection: {
-    paddingHorizontal: 24,
-    gap: 16,
-  },
-  messageSectionTitle: {
-    fontSize: 16,
+  sectionLabel: {
+    fontSize: 11,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1.1,
+  },
+  input: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.lg,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 13,
+    color: Colors.textPrimary,
+    fontSize: 15,
+    borderWidth: 1,
+    borderColor: Colors.surfaceHigh,
+  },
+  inputMultiline: {
+    minHeight: 100,
+    paddingTop: 13,
   },
   messageInput: {
-    backgroundColor: '#1A1A1A',
-    borderRadius: 16,
-    padding: 16,
-    color: '#FFFFFF',
-    fontSize: 15,
-    lineHeight: 22,
     minHeight: 160,
+    paddingTop: 13,
+    lineHeight: 22,
   },
-  shareButtons: {
+  generateBtn: {
+    backgroundColor: Colors.primary,
+    borderRadius: Radius.md,
+    paddingVertical: Spacing.lg,
+    alignItems: 'center',
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  generateBtnText: {
+    color: Colors.textPrimary,
+    fontSize: 15,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  shareRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: Spacing.sm,
   },
   shareBtn: {
     flex: 1,
-    borderRadius: 14,
+    borderRadius: Radius.md,
     paddingVertical: 14,
     alignItems: 'center',
-    gap: 6,
+    gap: Spacing.xs,
   },
   whatsappBtn: {
-    backgroundColor: '#25D36622',
+    backgroundColor: 'rgba(37, 211, 102, 0.12)',
     borderWidth: 1,
-    borderColor: '#25D366',
+    borderColor: Colors.whatsapp,
   },
   imessageBtn: {
-    backgroundColor: '#34AADC22',
+    backgroundColor: 'rgba(28, 122, 239, 0.12)',
     borderWidth: 1,
-    borderColor: '#34AADC',
+    borderColor: Colors.imessage,
   },
   emailBtn: {
-    backgroundColor: '#FF6B6B22',
+    backgroundColor: Colors.surfaceHigh,
     borderWidth: 1,
-    borderColor: '#FF6B6B',
+    borderColor: Colors.email,
   },
   shareBtnIcon: {
     fontSize: 20,
@@ -366,6 +319,9 @@ const styles = StyleSheet.create({
   shareBtnText: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: Colors.textPrimary,
+  },
+  btnDisabled: {
+    opacity: 0.45,
   },
 });

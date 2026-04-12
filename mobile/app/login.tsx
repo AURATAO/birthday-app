@@ -11,6 +11,7 @@ import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import { StatusBar } from 'expo-status-bar';
 import { supabase } from '../lib/supabase';
+import { Colors, Spacing, Radius } from '../constants/theme';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -18,11 +19,9 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Handle deep link redirect from OAuth
     const subscription = Linking.addEventListener('url', async ({ url }) => {
       if (url.includes('access_token') || url.includes('code=')) {
         // supabase-js v2 picks up the session automatically via onAuthStateChange
-        // when the URL is set as the redirect target; no manual call needed
       }
     });
     return () => subscription.remove();
@@ -46,7 +45,6 @@ export default function LoginScreen() {
       const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
 
       if (result.type === 'success' && result.url) {
-        // Extract tokens from the redirect URL and set the session manually
         const url = new URL(result.url);
         const params = new URLSearchParams(
           url.hash ? url.hash.slice(1) : url.search.slice(1)
@@ -69,26 +67,33 @@ export default function LoginScreen() {
       <StatusBar style="light" />
 
       <View style={styles.hero}>
-        <Text style={styles.emoji}>🎂</Text>
-        <Text style={styles.title}>Birthday Reminder</Text>
-        <Text style={styles.subtitle}>Never miss a birthday again</Text>
+        <View style={styles.logoMark}>
+          <Text style={styles.logoSymbol}>✦</Text>
+        </View>
+        <Text style={styles.title}>samantha</Text>
+        <Text style={styles.tagline}>your personal relationship assistant</Text>
       </View>
 
-      <TouchableOpacity
-        style={[styles.googleButton, loading && styles.googleButtonDisabled]}
-        onPress={handleGoogleLogin}
-        disabled={loading}
-        activeOpacity={0.8}
-      >
-        {loading ? (
-          <ActivityIndicator color="#000" />
-        ) : (
-          <>
-            <Text style={styles.googleIcon}>G</Text>
-            <Text style={styles.googleButtonText}>Continue with Google</Text>
-          </>
-        )}
-      </TouchableOpacity>
+      <View style={styles.footer}>
+        <TouchableOpacity
+          style={[styles.googleButton, loading && styles.googleButtonDisabled]}
+          onPress={handleGoogleLogin}
+          disabled={loading}
+          activeOpacity={0.85}
+        >
+          {loading ? (
+            <ActivityIndicator color={Colors.background} />
+          ) : (
+            <>
+              <Text style={styles.googleIcon}>G</Text>
+              <Text style={styles.googleButtonText}>Continue with Google</Text>
+            </>
+          )}
+        </TouchableOpacity>
+        <Text style={styles.legalText}>
+          By continuing you agree to our Terms & Privacy Policy
+        </Text>
+      </View>
     </View>
   );
 }
@@ -96,55 +101,77 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A0A0A',
+    backgroundColor: Colors.background,
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 80,
-    paddingHorizontal: 32,
+    paddingHorizontal: Spacing.xxl,
   },
   hero: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
+    gap: Spacing.lg,
   },
-  emoji: {
-    fontSize: 80,
-    marginBottom: 8,
+  logoMark: {
+    width: 72,
+    height: 72,
+    borderRadius: Radius.xl,
+    backgroundColor: Colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+  },
+  logoSymbol: {
+    fontSize: 30,
+    color: Colors.primary,
   },
   title: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    textAlign: 'center',
+    fontSize: 36,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+    letterSpacing: -1,
   },
-  subtitle: {
-    fontSize: 16,
-    color: '#888',
+  tagline: {
+    fontSize: 15,
+    color: Colors.textSecondary,
     textAlign: 'center',
+    letterSpacing: 0.1,
+  },
+  footer: {
+    width: '100%',
+    gap: Spacing.md,
+    alignItems: 'center',
   },
   googleButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    paddingVertical: 16,
-    paddingHorizontal: 24,
+    backgroundColor: Colors.textPrimary,
+    borderRadius: Radius.lg,
+    paddingVertical: Spacing.lg,
+    paddingHorizontal: Spacing.xl,
     width: '100%',
-    gap: 12,
+    gap: Spacing.md,
   },
   googleButtonDisabled: {
     opacity: 0.6,
   },
   googleIcon: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
     color: '#4285F4',
   },
   googleButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#000',
+    color: Colors.background,
+  },
+  legalText: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    textAlign: 'center',
   },
 });

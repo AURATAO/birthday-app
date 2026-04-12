@@ -12,12 +12,46 @@ import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { supabase } from '../lib/supabase';
 import { getLanguage, setLanguage } from '../lib/storage';
+import { Colors, Spacing, Radius, Typography } from '../constants/theme';
 
 export default function SettingsScreen() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [isChinese, setIsChinese] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+
+  async function handleDeleteAccount() {
+    Alert.alert(
+      isChinese ? '删除账户' : 'Delete account',
+      isChinese
+        ? '这将永久删除您的所有数据，无法恢复。确定吗？'
+        : 'This will permanently delete all your data. This cannot be undone.',
+      [
+        { text: isChinese ? '取消' : 'Cancel', style: 'cancel' },
+        {
+          text: isChinese ? '删除' : 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setDeletingAccount(true);
+            try {
+              const { data } = await supabase.auth.getSession();
+              const token = data.session?.access_token;
+              const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+              if (token && apiUrl) {
+                await fetch(`${apiUrl}/api/account`, {
+                  method: 'DELETE',
+                  headers: { Authorization: `Bearer ${token}` },
+                });
+              }
+            } catch {}
+            await supabase.auth.signOut();
+            setDeletingAccount(false);
+          },
+        },
+      ]
+    );
+  }
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -82,8 +116,8 @@ export default function SettingsScreen() {
               <Switch
                 value={isChinese}
                 onValueChange={handleLanguageToggle}
-                trackColor={{ false: '#333', true: '#FF6B6B' }}
-                thumbColor={isChinese ? '#FFFFFF' : '#888'}
+                trackColor={{ false: Colors.surfaceHigh, true: Colors.primary }}
+                thumbColor={Colors.textPrimary}
               />
               <Text style={styles.rowLabel}>中文</Text>
             </View>
@@ -103,6 +137,20 @@ export default function SettingsScreen() {
               : (isChinese ? '退出登录' : 'Log out')}
           </Text>
         </TouchableOpacity>
+
+        {/* Delete account */}
+        <TouchableOpacity
+          style={[styles.deleteBtn, deletingAccount && styles.logoutBtnDisabled]}
+          onPress={handleDeleteAccount}
+          disabled={deletingAccount}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.deleteText}>
+            {deletingAccount
+              ? (isChinese ? '删除中...' : 'Deleting...')
+              : (isChinese ? '删除账户' : 'Delete account')}
+          </Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -111,46 +159,47 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A0A0A',
+    backgroundColor: Colors.background,
     paddingTop: Platform.OS === 'ios' ? 60 : 40,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 24,
-    marginBottom: 32,
-    gap: 16,
+    paddingHorizontal: Spacing.xl,
+    marginBottom: Spacing.xxl,
+    gap: Spacing.lg,
   },
   backBtn: {
-    padding: 4,
+    padding: Spacing.xs,
   },
   backIcon: {
     fontSize: 24,
-    color: '#FFFFFF',
+    color: Colors.textPrimary,
   },
   title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    ...Typography.h2,
+    fontWeight: '600',
   },
   content: {
-    paddingHorizontal: 24,
-    gap: 24,
+    paddingHorizontal: Spacing.xl,
+    gap: Spacing.xl,
   },
   section: {
-    gap: 10,
+    gap: Spacing.sm,
   },
   sectionLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
-    color: '#666',
+    color: Colors.textMuted,
     textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: 1.2,
   },
   card: {
-    backgroundColor: '#1A1A1A',
-    borderRadius: 16,
-    paddingHorizontal: 16,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.lg,
+    paddingHorizontal: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.surfaceHigh,
   },
   row: {
     flexDirection: 'row',
@@ -160,30 +209,40 @@ const styles = StyleSheet.create({
   },
   rowLabel: {
     fontSize: 15,
-    color: '#FFFFFF',
+    color: Colors.textPrimary,
     fontWeight: '500',
   },
   rowValue: {
     fontSize: 14,
-    color: '#666',
+    color: Colors.textSecondary,
     flex: 1,
     textAlign: 'right',
   },
   logoutBtn: {
-    backgroundColor: '#FF3B3022',
+    backgroundColor: `rgba(226, 75, 74, 0.1)`,
     borderWidth: 1,
-    borderColor: '#FF3B30',
-    borderRadius: 14,
-    paddingVertical: 16,
+    borderColor: Colors.danger,
+    borderRadius: Radius.md,
+    paddingVertical: Spacing.lg,
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: Spacing.sm,
   },
   logoutBtnDisabled: {
     opacity: 0.5,
   },
   logoutText: {
-    color: '#FF3B30',
-    fontSize: 16,
+    color: Colors.danger,
+    fontSize: 15,
     fontWeight: '600',
+  },
+  deleteBtn: {
+    borderRadius: Radius.md,
+    paddingVertical: Spacing.lg,
+    alignItems: 'center',
+  },
+  deleteText: {
+    color: Colors.textMuted,
+    fontSize: 13,
+    fontWeight: '500',
   },
 });

@@ -10,78 +10,59 @@ import {
   Alert,
   Platform,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import Voice from '@react-native-voice/voice';
 import { supabase } from '../lib/supabase';
-import { getUpcomingBirthdays } from '../lib/api';
-
-interface Birthday {
-  id: string;
-  name: string;
-  days_until: number;
-  date: string;
-  emoji?: string;
-}
+import { getUpcomingBirthdays, UpcomingEvent } from '../lib/api';
+import { Colors, Spacing, Radius } from '../constants/theme';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const [birthdays, setBirthdays] = useState<Birthday[]>([]);
+  const [birthdays, setBirthdays] = useState<UpcomingEvent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isListening, setIsListening] = useState(false);
   const [userEmail, setUserEmail] = useState('');
 
-  // Pulse animation
   const pulseAnim = useRef(new Animated.Value(1)).current;
-  const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
+  const ring1Anim = useRef(new Animated.Value(1)).current;
+  const ring2Anim = useRef(new Animated.Value(1)).current;
 
+  // Idle ripple animation — runs continuously
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       setUserEmail(data.user?.email ?? '');
     });
-    fetchBirthdays();
 
-    Voice.onSpeechStart = () => setIsListening(true);
-    Voice.onSpeechEnd = () => setIsListening(false);
-    Voice.onSpeechError = () => setIsListening(false);
-
-    return () => {
-      Voice.destroy().then(Voice.removeAllListeners);
-      pulseLoop.current?.stop();
-    };
+    const loop = Animated.loop(
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1.06, duration: 900, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 900, useNativeDriver: true }),
+        ]),
+        Animated.sequence([
+          Animated.timing(ring1Anim, { toValue: 1.14, duration: 1200, useNativeDriver: true }),
+          Animated.timing(ring1Anim, { toValue: 1, duration: 1200, useNativeDriver: true }),
+        ]),
+        Animated.sequence([
+          Animated.timing(ring2Anim, { toValue: 1.22, duration: 1500, useNativeDriver: true }),
+          Animated.timing(ring2Anim, { toValue: 1, duration: 1500, useNativeDriver: true }),
+        ]),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
   }, []);
 
-  useEffect(() => {
-    if (isListening) {
-      pulseLoop.current = Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 1.18,
-            duration: 700,
-            useNativeDriver: true,
-          }),
-          Animated.timing(pulseAnim, {
-            toValue: 1,
-            duration: 700,
-            useNativeDriver: true,
-          }),
-        ])
-      );
-      pulseLoop.current.start();
-    } else {
-      pulseLoop.current?.stop();
-      Animated.timing(pulseAnim, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [isListening]);
+  // Refresh list every time screen comes into focus (e.g. returning from /add)
+  useFocusEffect(
+    useCallback(() => {
+      fetchBirthdays();
+    }, [])
+  );
 
   async function fetchBirthdays() {
     try {
       const data = await getUpcomingBirthdays();
-      setBirthdays(data?.events ?? data ?? []);
+      setBirthdays(Array.isArray(data) ? data : []);
     } catch (err: any) {
       Alert.alert('Error', err.message);
     } finally {
@@ -89,28 +70,17 @@ export default function HomeScreen() {
     }
   }
 
-  async function handleMicPress() {
-    if (isListening) {
-      try {
-        await Voice.stop();
-      } catch {}
-      return;
-    }
-    try {
-      await Voice.start('en-US');
-    } catch (err: any) {
-      Alert.alert('Microphone error', err.message);
-    }
-  }
-
   const firstName = userEmail.split('@')[0].split('.')[0];
   const displayName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
 
-  const renderBirthday = useCallback(({ item }: { item: Birthday }) => {
+  const hour = new Date().getHours();
+  const greeting =
+    hour < 12 ? 'good morning' : hour < 17 ? 'good afternoon' : 'good evening';
+
+  const renderBirthday = useCallback(({ item }: { item: UpcomingEvent }) => {
     const isToday = item.days_until === 0;
     const isTomorrow = item.days_until === 1;
     const label = isToday ? 'Today!' : isTomorrow ? 'Tomorrow' : `in ${item.days_until} days`;
-    const emoji = item.emoji ?? '🎂';
 
     return (
       <TouchableOpacity
@@ -119,11 +89,13 @@ export default function HomeScreen() {
         activeOpacity={0.75}
       >
         <View style={styles.birthdayAvatar}>
-          <Text style={styles.birthdayEmoji}>{emoji}</Text>
+          <Text style={styles.birthdayEmoji}>🎂</Text>
         </View>
         <View style={styles.birthdayInfo}>
           <Text style={styles.birthdayName}>{item.name}</Text>
-          <Text style={styles.birthdayDate}>{item.date}</Text>
+          <Text style={styles.birthdayDate}>
+            {item.relationship ? `${item.relationship} · ` : ''}{item.birthday}
+          </Text>
         </View>
         <View style={[styles.daysBadge, isToday && styles.daysBadgeToday]}>
           <Text style={[styles.daysText, isToday && styles.daysTextToday]}>{label}</Text>
@@ -139,39 +111,45 @@ export default function HomeScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.greeting}>Hey {displayName}! 👋</Text>
-          <Text style={styles.subGreeting}>Who do you want to celebrate?</Text>
+          <Text style={styles.greeting}>
+            {greeting},{displayName ? ` ${displayName}` : ''}
+          </Text>
+          <Text style={styles.appName}>samantha</Text>
         </View>
         <TouchableOpacity onPress={() => router.push('/settings')} style={styles.settingsBtn}>
-          <Text style={styles.settingsIcon}>⚙️</Text>
+          <View style={styles.settingsCircle}>
+            <Text style={styles.settingsInitial}>
+              {displayName ? displayName[0].toUpperCase() : '?'}
+            </Text>
+          </View>
         </TouchableOpacity>
       </View>
 
-      {/* Mic Section */}
+      {/* Mic Section — taps navigate to /add */}
       <View style={styles.micSection}>
-        <Text style={styles.micLabel}>
-          {isListening ? 'Listening...' : 'Tap to search'}
-        </Text>
-        <Animated.View style={[styles.micOuter, { transform: [{ scale: pulseAnim }] }]}>
-          <View style={styles.micRing}>
-            <TouchableOpacity
-              style={[styles.micButton, isListening && styles.micButtonActive]}
-              onPress={handleMicPress}
-              activeOpacity={0.9}
-            >
-              <Text style={styles.micIcon}>{isListening ? '⏹' : '🎤'}</Text>
-            </TouchableOpacity>
-          </View>
+        <Animated.View style={[styles.micRing2, { transform: [{ scale: ring2Anim }] }]}>
+          <Animated.View style={[styles.micRing1, { transform: [{ scale: ring1Anim }] }]}>
+            <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+              <TouchableOpacity
+                style={styles.micButton}
+                onPress={() => router.push('/add' as any)}
+                activeOpacity={0.9}
+              >
+                <Text style={styles.micIcon}>🎤</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </Animated.View>
         </Animated.View>
+        <Text style={styles.micLabel}>tap to add a birthday</Text>
       </View>
 
       {/* Birthdays List */}
       <View style={styles.listSection}>
-        <Text style={styles.sectionTitle}>Upcoming Birthdays</Text>
+        <Text style={styles.sectionTitle}>Upcoming</Text>
         {loading ? (
-          <ActivityIndicator color="#FF6B6B" style={{ marginTop: 32 }} />
+          <ActivityIndicator color={Colors.primary} style={{ marginTop: Spacing.xxl }} />
         ) : birthdays.length === 0 ? (
-          <Text style={styles.emptyText}>No upcoming birthdays</Text>
+          <Text style={styles.emptyText}>No upcoming birthdays — add one above</Text>
         ) : (
           <FlatList
             data={birthdays}
@@ -189,146 +167,162 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A0A0A',
+    backgroundColor: Colors.background,
     paddingTop: Platform.OS === 'ios' ? 60 : 40,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    paddingHorizontal: 24,
-    marginBottom: 8,
+    paddingHorizontal: Spacing.xl,
+    marginBottom: Spacing.sm,
   },
   greeting: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '400',
+    color: Colors.textSecondary,
+    letterSpacing: 0.2,
   },
-  subGreeting: {
-    fontSize: 14,
-    color: '#666',
+  appName: {
+    fontSize: 26,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+    letterSpacing: -0.5,
     marginTop: 2,
   },
   settingsBtn: {
-    padding: 4,
+    padding: Spacing.xs,
   },
-  settingsIcon: {
-    fontSize: 24,
+  settingsCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.surfaceHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.textMuted,
+  },
+  settingsInitial: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.textSecondary,
   },
   micSection: {
     alignItems: 'center',
-    paddingVertical: 32,
+    paddingVertical: Spacing.xxl,
   },
-  micLabel: {
-    color: '#888',
-    fontSize: 14,
-    marginBottom: 24,
-    letterSpacing: 0.5,
-  },
-  micOuter: {
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: 'rgba(255, 107, 107, 0.08)',
+  micRing2: {
+    width: 172,
+    height: 172,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.primaryRing,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  micRing: {
-    width: 130,
-    height: 130,
-    borderRadius: 65,
-    backgroundColor: 'rgba(255, 107, 107, 0.15)',
+  micRing1: {
+    width: 140,
+    height: 140,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
   micButton: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: '#FF6B6B',
+    width: 108,
+    height: 108,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#FF6B6B',
+    shadowColor: Colors.primary,
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  micButtonActive: {
-    backgroundColor: '#FF3B3B',
+    shadowOpacity: 0.55,
+    shadowRadius: 24,
+    elevation: 12,
   },
   micIcon: {
-    fontSize: 36,
+    fontSize: 38,
+  },
+  micLabel: {
+    color: Colors.textSecondary,
+    fontSize: 13,
+    marginTop: Spacing.lg,
+    letterSpacing: 0.3,
   },
   listSection: {
     flex: 1,
-    paddingHorizontal: 24,
+    paddingHorizontal: Spacing.xl,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 12,
     fontWeight: '600',
-    color: '#FFFFFF',
-    marginBottom: 16,
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+    marginBottom: Spacing.md,
   },
   listContent: {
-    paddingBottom: 32,
-    gap: 12,
+    paddingBottom: Spacing.xxl,
+    gap: Spacing.sm,
   },
   birthdayCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1A1A1A',
-    borderRadius: 16,
-    padding: 16,
-    gap: 14,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.lg,
+    padding: Spacing.lg,
+    gap: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.surfaceHigh,
   },
   birthdayAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#2A2A2A',
+    width: 44,
+    height: 44,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.surfaceHigh,
     alignItems: 'center',
     justifyContent: 'center',
   },
   birthdayEmoji: {
-    fontSize: 24,
+    fontSize: 22,
   },
   birthdayInfo: {
     flex: 1,
   },
   birthdayName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '500',
+    color: Colors.textPrimary,
   },
   birthdayDate: {
-    fontSize: 13,
-    color: '#666',
+    fontSize: 12,
+    color: Colors.textSecondary,
     marginTop: 2,
   },
   daysBadge: {
-    backgroundColor: '#2A2A2A',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    backgroundColor: Colors.surfaceHigh,
+    borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
   },
   daysBadgeToday: {
-    backgroundColor: '#FF6B6B22',
+    backgroundColor: Colors.primaryLight,
     borderWidth: 1,
-    borderColor: '#FF6B6B',
+    borderColor: Colors.primary,
   },
   daysText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
-    color: '#888',
+    color: Colors.textSecondary,
   },
   daysTextToday: {
-    color: '#FF6B6B',
+    color: Colors.primary,
   },
   emptyText: {
-    color: '#666',
+    color: Colors.textSecondary,
     textAlign: 'center',
     marginTop: 40,
-    fontSize: 16,
+    fontSize: 15,
   },
 });

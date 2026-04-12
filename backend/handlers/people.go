@@ -42,3 +42,58 @@ func CreatePerson(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, gin.H{"id": id})
 }
+
+type UpdatePersonRequest struct {
+	Name         string `json:"name"`
+	Relationship string `json:"relationship"`
+	Notes        string `json:"notes"`
+	Phone        string `json:"phone"`
+}
+
+func UpdatePerson(c *gin.Context) {
+	personID := c.Param("id")
+	userID, _ := c.Get("user_id")
+
+	var req UpdatePersonRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	tag, err := DB.Exec(context.Background(),
+		`UPDATE people SET name=$1, relationship=$2, notes=$3, phone=$4
+		 WHERE id=$5 AND user_id=$6`,
+		req.Name, req.Relationship, req.Notes, req.Phone, personID, userID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "person not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+func DeletePerson(c *gin.Context) {
+	personID := c.Param("id")
+	userID, _ := c.Get("user_id")
+
+	tag, err := DB.Exec(context.Background(),
+		`UPDATE people SET deleted_at = NOW()
+		 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
+		personID, userID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "person not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}

@@ -126,6 +126,82 @@ Keep it to 3–5 sentences. Do not add a subject line or sign-off — just the m
 	})
 }
 
+type UpdateCardRequest struct {
+	EditedMessage string `json:"edited_message" binding:"required"`
+}
+
+func UpdateCard(c *gin.Context) {
+	cardID := c.Param("id")
+
+	var req UpdateCardRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	tag, err := DB.Exec(context.Background(),
+		`UPDATE cards SET edited_message=$1, was_edited=true WHERE id=$2`,
+		req.EditedMessage, cardID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "card not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+func DeleteCard(c *gin.Context) {
+	cardID := c.Param("id")
+
+	tag, err := DB.Exec(context.Background(),
+		`DELETE FROM cards WHERE id=$1`, cardID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "card not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+type SendCardRequest struct {
+	Channel string `json:"channel" binding:"required"`
+}
+
+func SendCard(c *gin.Context) {
+	cardID := c.Param("id")
+
+	var req SendCardRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	tag, err := DB.Exec(context.Background(),
+		`UPDATE cards SET status='sent', channel=$1 WHERE id=$2`,
+		req.Channel, cardID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "card not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
 // calculateAge returns the age the person will turn on their next birthday.
 // If their birthday this year has already passed, it returns next year's age.
 func calculateAge(birthday time.Time) int {

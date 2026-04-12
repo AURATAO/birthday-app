@@ -33,17 +33,18 @@ function formatDate(dateStr: string) {
 
 function DaysUntilBadge({ days }: { days: number }) {
   if (days === 0)
-    return <span className="text-xs font-semibold text-rose-400">Today 🎂</span>
+    return <span className="text-xs font-semibold text-[#7C3AED]">Today 🎂</span>
   if (days === 1)
-    return <span className="text-xs font-semibold text-orange-400">Tomorrow</span>
+    return <span className="text-xs font-semibold text-[#7C3AED]">Tomorrow</span>
   if (days <= 7)
-    return <span className="text-xs font-semibold text-amber-400">{days}d</span>
-  return <span className="text-xs text-white/30">{days}d</span>
+    return <span className="text-xs font-semibold text-[#7C3AED]">{days}d</span>
+  return <span className="text-xs text-[#3D3D50]">{days}d</span>
 }
+
+const supabase = createClient()
 
 export default function Dashboard() {
   const router = useRouter()
-  const supabase = createClient()
 
   const [appState, setAppState] = useState<AppState>('idle')
   const [parsed, setParsed] = useState<ParsedEvent | null>(null)
@@ -53,6 +54,9 @@ export default function Dashboard() {
   const [speechLang, setSpeechLang] = useState('en-US')
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null)
+
+  const hour = new Date().getHours()
+  const timeGreeting = hour < 12 ? 'good morning' : hour < 17 ? 'good afternoon' : 'good evening'
 
   useEffect(() => {
     const saved = localStorage.getItem('speech-lang')
@@ -65,6 +69,9 @@ export default function Dashboard() {
       .then((data) => setBirthdays(Array.isArray(data) ? data : []))
       .catch(() => {})
   }, [])
+
+  const firstName = userEmail.split('@')[0].split('.')[0]
+  const displayName = firstName ? firstName.charAt(0).toUpperCase() + firstName.slice(1) : ''
 
   function handleButtonTap() {
     if (appState === 'idle') startListening()
@@ -140,7 +147,6 @@ export default function Dashboard() {
     if (!parsed) return
     setAppState('saving')
     try {
-      // Step 1: create the person
       const personRes = await apiFetch('/api/people', {
         method: 'POST',
         body: JSON.stringify({ name: parsed.name, relationship: parsed.relationship, notes: parsed.notes, language: parsed.language }),
@@ -148,7 +154,6 @@ export default function Dashboard() {
       const personData = await personRes.json()
       if (!personRes.ok) throw new Error(personData.error || 'Failed to save person')
 
-      // Step 2: create the event linked to that person
       const eventRes = await apiFetch('/api/events', {
         method: 'POST',
         body: JSON.stringify({ person_id: personData.id, type: 'birthday', event_date: parsed.birthday }),
@@ -156,7 +161,6 @@ export default function Dashboard() {
       const eventData = await eventRes.json()
       if (!eventRes.ok) throw new Error(eventData.error || 'Failed to save event')
 
-      // Refresh list
       const list = await apiFetch('/api/events/upcoming').then((r) => r.json())
       setBirthdays(Array.isArray(list) ? list : [])
       setParsed(null)
@@ -185,20 +189,21 @@ export default function Dashboard() {
   const isSaved = appState === 'saved'
 
   return (
-    <div className="relative flex h-screen w-full flex-col overflow-hidden bg-[#080c18] text-white">
+    <div className="relative flex h-screen w-full flex-col overflow-hidden bg-[#0A0A0F] text-[#E8E8F0]">
+
       {/* ── Top bar ───────────────────────────────────── */}
       <div className="flex items-center justify-between px-5 pt-14 pb-2">
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold tracking-tight text-white/80">Birthday</h1>
-          {userEmail && (
-            <p className="truncate text-xs text-white/30">{userEmail}</p>
-          )}
+          <p className="text-sm text-[#6B6B80]">{timeGreeting}{displayName ? `, ${displayName}` : ''}</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-[#E8E8F0]" style={{ letterSpacing: '-0.03em' }}>
+            samantha
+          </h1>
         </div>
         <button
           onPointerDown={signOut}
-          className="rounded-full px-3 py-1.5 text-xs text-white/30 active:text-white/60"
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1C1C2E] text-xs font-semibold text-[#6B6B80] active:text-[#E8E8F0]"
         >
-          Sign out
+          {displayName ? displayName[0].toUpperCase() : '?'}
         </button>
       </div>
 
@@ -212,15 +217,15 @@ export default function Dashboard() {
           {isListening && (
             <>
               <div
-                className="absolute rounded-full bg-blue-500/20"
+                className="absolute rounded-full bg-[rgba(124,58,237,0.18)]"
                 style={{ width: 240, height: 240, animation: 'shazam-ripple 2s ease-out infinite' }}
               />
               <div
-                className="absolute rounded-full bg-blue-500/15"
+                className="absolute rounded-full bg-[rgba(124,58,237,0.12)]"
                 style={{ width: 240, height: 240, animation: 'shazam-ripple 2s ease-out 0.6s infinite' }}
               />
               <div
-                className="absolute rounded-full bg-blue-500/10"
+                className="absolute rounded-full bg-[rgba(124,58,237,0.07)]"
                 style={{ width: 240, height: 240, animation: 'shazam-ripple 2s ease-out 1.2s infinite' }}
               />
             </>
@@ -233,7 +238,7 @@ export default function Dashboard() {
               style={{
                 width: 200,
                 height: 200,
-                background: 'radial-gradient(circle, rgba(59,130,246,0.15) 0%, transparent 70%)',
+                background: 'radial-gradient(circle, rgba(124,58,237,0.13) 0%, transparent 70%)',
                 animation: 'idle-breathe 3s ease-in-out infinite',
               }}
             />
@@ -246,40 +251,35 @@ export default function Dashboard() {
             className={[
               'relative z-10 flex h-[190px] w-[190px] items-center justify-center rounded-full transition-all duration-500 active:scale-95',
               appState === 'idle'
-                ? 'bg-gradient-to-br from-blue-500 to-blue-700 shadow-[0_0_70px_rgba(59,130,246,0.35)]'
+                ? 'bg-[#7C3AED] shadow-[0_0_70px_rgba(124,58,237,0.4)]'
                 : '',
               isListening
-                ? 'bg-gradient-to-br from-blue-400 to-indigo-600 shadow-[0_0_90px_rgba(99,102,241,0.55)]'
+                ? 'bg-[#9B5EF5] shadow-[0_0_90px_rgba(124,58,237,0.6)]'
                 : '',
               isBusy
-                ? 'bg-gradient-to-br from-slate-600 to-slate-800 shadow-none'
+                ? 'bg-[#1C1C2E] shadow-none'
                 : '',
               isResult
-                ? 'bg-gradient-to-br from-emerald-500 to-teal-700 shadow-[0_0_70px_rgba(16,185,129,0.4)]'
+                ? 'bg-[#1D9E75] shadow-[0_0_70px_rgba(29,158,117,0.4)]'
                 : '',
               isSaved
-                ? 'bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-[0_0_90px_rgba(52,211,153,0.6)]'
+                ? 'bg-[#1D9E75] shadow-[0_0_90px_rgba(29,158,117,0.5)]'
                 : '',
             ].join(' ')}
             aria-label={isListening ? 'Stop recording' : 'Start recording'}
           >
-            {/* Spinner */}
             {isBusy && (
               <svg className="h-12 w-12 animate-spin text-white/40" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
             )}
-
-            {/* Mic icon */}
             {(appState === 'idle' || isListening) && (
               <svg className="h-16 w-16 text-white drop-shadow-lg" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M12 14a3 3 0 003-3V5a3 3 0 00-6 0v6a3 3 0 003 3z" />
                 <path d="M19 11a1 1 0 10-2 0 5 5 0 01-10 0 1 1 0 10-2 0 7 7 0 006 6.92V20H9a1 1 0 100 2h6a1 1 0 100-2h-2v-2.08A7 7 0 0019 11z" />
               </svg>
             )}
-
-            {/* Check icon — review state or saved state */}
             {(isResult || isSaved) && (
               <svg className="h-14 w-14 text-white drop-shadow-lg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
@@ -288,26 +288,23 @@ export default function Dashboard() {
           </button>
         </div>
 
-        {/* ── Status text / result card ─────────────────── */}
-        <div className="mt-10 flex flex-col items-center px-6 text-center">
+        {/* ── Status text ─────────────────────────────── */}
+        <div className="mt-8 flex flex-col items-center px-6 text-center">
           {appState === 'idle' && (
-            <p className="text-base font-light tracking-wide text-white/40">Tap to add a birthday</p>
+            <p className="text-sm text-[#6B6B80]">tap to add a birthday</p>
           )}
           {isListening && (
-            <p className="animate-pulse text-base font-medium tracking-wide text-blue-400">
-              Listening…
-            </p>
+            <p className="animate-pulse text-sm font-medium text-[#7C3AED]">listening…</p>
           )}
           {appState === 'processing' && (
-            <p className="text-base font-light text-white/40">Thinking…</p>
+            <p className="text-sm text-[#6B6B80]">thinking…</p>
           )}
           {appState === 'saving' && (
-            <p className="text-base font-light text-white/40">Saving…</p>
+            <p className="text-sm text-[#6B6B80]">saving…</p>
           )}
           {isSaved && (
-            <p className="text-base font-semibold text-emerald-400">Saved!</p>
+            <p className="text-sm font-semibold text-[#1D9E75]">Saved!</p>
           )}
-
           {error && (
             <p className="mt-3 text-sm text-red-400">{error}</p>
           )}
@@ -315,14 +312,14 @@ export default function Dashboard() {
 
         {/* ── Language toggle ───────────────────────────── */}
         {!isBusy && !isResult && (
-          <div className="mt-6 flex gap-1 rounded-full bg-white/6 p-1">
+          <div className="mt-6 flex gap-1 rounded-full bg-[#13131F] p-1">
             <button
               onPointerDown={() => setLang('en-US')}
               className={[
                 'rounded-full px-4 py-1.5 text-xs font-medium transition-colors',
                 speechLang === 'en-US'
-                  ? 'bg-white/15 text-white'
-                  : 'text-white/35 active:text-white/60',
+                  ? 'bg-[#1C1C2E] text-[#E8E8F0]'
+                  : 'text-[#3D3D50] active:text-[#6B6B80]',
               ].join(' ')}
             >
               🇺🇸 EN
@@ -332,8 +329,8 @@ export default function Dashboard() {
               className={[
                 'rounded-full px-4 py-1.5 text-xs font-medium transition-colors',
                 speechLang === 'zh-TW'
-                  ? 'bg-white/15 text-white'
-                  : 'text-white/35 active:text-white/60',
+                  ? 'bg-[#1C1C2E] text-[#E8E8F0]'
+                  : 'text-[#3D3D50] active:text-[#6B6B80]',
               ].join(' ')}
             >
               🇹🇼 中文
@@ -344,28 +341,25 @@ export default function Dashboard() {
 
       {/* ── Bottom sheet ───────────────────────────────── */}
       <div className="absolute bottom-0 left-0 right-0">
-        <div className="rounded-t-3xl bg-[#0f1525] pb-10 pt-3 shadow-[0_-1px_0_rgba(255,255,255,0.06)]">
-          {/* Drag handle */}
-          <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/15" />
-
+        <div className="rounded-t-3xl bg-[#13131F] pb-10 pt-3 shadow-[0_-1px_0_rgba(255,255,255,0.04)]">
+          <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-[#1C1C2E]" />
           <div className="px-5">
-            <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.15em] text-white/25">
+            <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.15em] text-[#3D3D50]">
               Upcoming
             </p>
-
             <div className="max-h-44 space-y-1 overflow-y-auto">
               {birthdays.length === 0 ? (
-                <p className="py-6 text-center text-sm text-white/20">No birthdays yet</p>
+                <p className="py-6 text-center text-sm text-[#3D3D50]">No birthdays yet</p>
               ) : (
                 birthdays.slice(0, 6).map((b) => (
                   <Link
                     key={b.id}
                     href={`/card/${b.id}`}
-                    className="flex items-center justify-between rounded-2xl px-4 py-3 transition-colors active:bg-white/10"
+                    className="flex items-center justify-between rounded-2xl px-4 py-3 transition-colors active:bg-[#1C1C2E]"
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-white/80">{b.name}</p>
-                      <p className="text-xs text-white/30">
+                      <p className="truncate text-sm font-medium text-[#E8E8F0]">{b.name}</p>
+                      <p className="text-xs text-[#6B6B80]">
                         {formatDate(b.birthday)}
                         {b.relationship ? ` · ${b.relationship}` : ''}
                       </p>
@@ -382,54 +376,45 @@ export default function Dashboard() {
       {/* ── Review modal ──────────────────────────────── */}
       {isResult && parsed && (
         <div className="absolute inset-0 z-50 flex flex-col justify-end">
-          {/* Backdrop */}
           <div className="absolute inset-0 bg-black/60" onPointerDown={discard} />
-
-          {/* Sheet */}
-          <div className="relative rounded-t-3xl bg-[#111827] px-5 pb-10 pt-4 text-white">
-            {/* Handle */}
-            <div className="mx-auto mb-5 h-1 w-10 rounded-full bg-white/20" />
-
-            {/* Header */}
+          <div className="relative rounded-t-3xl bg-[#13131F] px-5 pb-10 pt-4 text-[#E8E8F0]">
+            <div className="mx-auto mb-5 h-1 w-10 rounded-full bg-[#1C1C2E]" />
             <div className="mb-4 flex items-center justify-between">
-              <p className="text-base font-semibold text-white/80">Confirm details</p>
-              <button onClick={discard} className="text-sm text-white/40 active:text-white/60">Cancel</button>
+              <p className="text-base font-semibold text-[#E8E8F0]">Confirm details</p>
+              <button onClick={discard} className="text-sm text-[#6B6B80] active:text-[#E8E8F0]">Cancel</button>
             </div>
-
             <div className="space-y-2">
               <input
-                className="w-full rounded-xl bg-white/8 px-4 py-3 text-base font-medium text-white placeholder-white/25 outline-none focus:bg-white/12"
+                className="w-full rounded-xl bg-[#1C1C2E] px-4 py-3 text-base font-medium text-[#E8E8F0] placeholder-[#3D3D50] outline-none focus:ring-1 focus:ring-[#7C3AED]"
                 placeholder="Name"
                 value={parsed.name}
                 onChange={(e) => setParsed({ ...parsed, name: e.target.value })}
               />
               <input
                 type="date"
-                className="w-full rounded-xl bg-white/8 px-4 py-3 text-sm text-white/70 outline-none focus:bg-white/12"
+                className="w-full rounded-xl bg-[#1C1C2E] px-4 py-3 text-sm text-[#6B6B80] outline-none focus:ring-1 focus:ring-[#7C3AED]"
                 value={parsed.birthday}
                 onChange={(e) => setParsed({ ...parsed, birthday: e.target.value })}
               />
               <input
-                className="w-full rounded-xl bg-white/8 px-4 py-3 text-sm text-white/70 placeholder-white/25 outline-none focus:bg-white/12"
+                className="w-full rounded-xl bg-[#1C1C2E] px-4 py-3 text-sm text-[#6B6B80] placeholder-[#3D3D50] outline-none focus:ring-1 focus:ring-[#7C3AED]"
                 placeholder="Relationship (e.g. best friend, mum)"
                 value={parsed.relationship}
                 onChange={(e) => setParsed({ ...parsed, relationship: e.target.value })}
               />
               <textarea
-                className="w-full rounded-xl bg-white/8 px-4 py-3 text-sm text-white/70 placeholder-white/25 outline-none focus:bg-white/12"
+                className="w-full rounded-xl bg-[#1C1C2E] px-4 py-3 text-sm text-[#6B6B80] placeholder-[#3D3D50] outline-none focus:ring-1 focus:ring-[#7C3AED]"
                 placeholder="Notes (e.g. loves hiking, into coffee)"
                 rows={2}
                 value={parsed.notes}
                 onChange={(e) => setParsed({ ...parsed, notes: e.target.value })}
               />
             </div>
-
             {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
-
             <button
               onClick={confirmSave}
               disabled={!parsed.name || !parsed.birthday}
-              className="mt-4 w-full rounded-full bg-emerald-500 py-4 text-base font-semibold text-white shadow-lg shadow-emerald-900/40 disabled:opacity-40 active:bg-emerald-600"
+              className="mt-4 w-full rounded-full bg-[#7C3AED] py-4 text-base font-semibold text-white shadow-lg shadow-purple-900/30 disabled:opacity-40 active:bg-[#9B5EF5]"
             >
               Save birthday
             </button>

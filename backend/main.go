@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"log"
-	"net/http"
 	"os"
 
 	"birthday-app/handlers"
@@ -52,12 +51,23 @@ func main() {
 	api.Use(middleware.AuthMiddleware())
 	{
 		api.POST("/people", handlers.CreatePerson)
+		api.PUT("/people/:id", handlers.UpdatePerson)
+		api.DELETE("/people/:id", handlers.DeletePerson)
+
 		api.POST("/events", handlers.CreateEvent)
 		api.GET("/events/upcoming", handlers.GetUpcomingEvents)
 		api.GET("/events/:id", handlers.GetEvent)
+
 		api.POST("/voice/parse", handlers.ParseVoice)
+
 		api.POST("/card/generate", handlers.GenerateCard)
-		api.POST("/card/send", func(c *gin.Context) { c.JSON(http.StatusNotImplemented, gin.H{"error": "not implemented"}) })
+		api.PUT("/card/:id", handlers.UpdateCard)
+		api.DELETE("/card/:id", handlers.DeleteCard)
+		api.POST("/card/:id/send", handlers.SendCard)
+
+		api.POST("/push-token", handlers.SavePushToken)
+
+		api.DELETE("/account", handlers.DeleteAccount)
 	}
 
 	port := os.Getenv("PORT")
