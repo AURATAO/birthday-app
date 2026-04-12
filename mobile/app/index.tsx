@@ -15,13 +15,14 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { supabase } from '../lib/supabase';
 import { getUpcomingBirthdays, deletePerson, UpcomingEvent } from '../lib/api';
-import { Colors, Spacing, Radius } from '../constants/theme';
+import { Colors, Spacing, Radius, Typography } from '../constants/theme';
 
 export default function HomeScreen() {
   const router = useRouter();
   const [birthdays, setBirthdays] = useState<UpcomingEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const ring1Anim = useRef(new Animated.Value(1)).current;
@@ -74,25 +75,13 @@ export default function HomeScreen() {
   }
 
   async function handleDelete(item: UpcomingEvent) {
-    Alert.alert(
-      'Delete Birthday',
-      `Remove ${item.name}'s birthday?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deletePerson(item.person_id);
-              setBirthdays((prev) => prev.filter((b) => b.id !== item.id));
-            } catch (err: any) {
-              Alert.alert('Error', err.message);
-            }
-          },
-        },
-      ]
-    );
+    try {
+      await deletePerson(item.person_id);
+      setBirthdays((prev) => prev.filter((b) => b.id !== item.id));
+      setDeletingId(null);
+    } catch (err: any) {
+      Alert.alert('Error', err.message);
+    }
   }
 
   const firstName = userEmail.split('@')[0].split('.')[0];
@@ -103,38 +92,54 @@ export default function HomeScreen() {
     hour < 12 ? 'good morning' : hour < 17 ? 'good afternoon' : 'good evening';
 
   const renderBirthday = useCallback(({ item }: { item: UpcomingEvent }) => {
-    const isToday = item.days_until === 0;
-    const isTomorrow = item.days_until === 1;
-    const label = isToday ? 'Today!' : isTomorrow ? 'Tomorrow' : `in ${item.days_until} days`;
+    const isDeleting = deletingId === item.id;
 
     return (
       <TouchableOpacity
-        style={styles.birthdayCard}
-        onPress={() => router.push(`/card/${item.id}`)}
+        onPress={() => !deletingId && router.push(`/card/${item.id}`)}
+        onLongPress={() => setDeletingId(item.id)}
         activeOpacity={0.75}
+        style={{
+          backgroundColor: isDeleting ? '#3D0A0A' : Colors.surface,
+          borderRadius: Radius.md,
+          padding: Spacing.lg,
+          marginBottom: Spacing.sm,
+          borderWidth: 1,
+          borderColor: isDeleting ? '#E24B4A' : 'transparent',
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
       >
-        <View style={styles.birthdayAvatar}>
-          <Text style={styles.birthdayEmoji}>🎂</Text>
-        </View>
-        <View style={styles.birthdayInfo}>
-          <Text style={styles.birthdayName}>{item.name}</Text>
-          <Text style={styles.birthdayDate}>
-            {item.relationship ? `${item.relationship} · ` : ''}{item.birthday}
+        <View style={{ flex: 1 }}>
+          <Text style={Typography.h3}>{item.name}</Text>
+          <Text style={Typography.caption}>{item.birthday}</Text>
+          <Text style={{ color: Colors.primary, fontSize: 12 }}>
+            {item.days_until === 0 ? 'Today!' : item.days_until === 1 ? 'Tomorrow' : `in ${item.days_until} days`}
           </Text>
         </View>
-        <View style={[styles.daysBadge, isToday && styles.daysBadgeToday]}>
-          <Text style={[styles.daysText, isToday && styles.daysTextToday]}>{label}</Text>
-        </View>
-        <TouchableOpacity
-          style={styles.deleteBtn}
-          onPress={() => handleDelete(item)}
-          hitSlop={8}
-        >
-          <Text style={styles.deleteBtnText}>🗑</Text>
-        </TouchableOpacity>
+
+        {isDeleting ? (
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity
+              onPress={() => handleDelete(item)}
+              style={{ backgroundColor: '#E24B4A', paddingHorizontal: 14, paddingVertical: 8, borderRadius: Radius.sm }}
+            >
+              <Text style={{ color: 'white', fontWeight: '600', fontSize: 13 }}>Delete</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setDeletingId(null)}
+              style={{ backgroundColor: Colors.surfaceHigh, paddingHorizontal: 14, paddingVertical: 8, borderRadius: Radius.sm }}
+            >
+              <Text style={{ color: Colors.textSecondary, fontSize: 13 }}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <Text style={{ color: Colors.textMuted, fontSize: 12 }}>›</Text>
+        )}
       </TouchableOpacity>
     );
-  }, []);
+  }, [deletingId]);
 
   return (
     <View style={styles.container}>
@@ -167,7 +172,7 @@ export default function HomeScreen() {
                   onPress={() => router.push('/add' as any)}
                   activeOpacity={0.9}
                 >
-                  <Text style={styles.micIcon}>🎤</Text>
+                  <Text style={{ fontFamily: 'serif', fontStyle: 'italic', fontSize: 52, fontWeight: '500', color: 'white' }}>S</Text>
                 </TouchableOpacity>
               </Animated.View>
             </Animated.View>
@@ -298,70 +303,10 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.xxl,
     gap: Spacing.sm,
   },
-  birthdayCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.lg,
-    padding: Spacing.lg,
-    gap: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.surfaceHigh,
-  },
-  birthdayAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.surfaceHigh,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  birthdayEmoji: {
-    fontSize: 22,
-  },
-  birthdayInfo: {
-    flex: 1,
-  },
-  birthdayName: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: Colors.textPrimary,
-  },
-  birthdayDate: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginTop: 2,
-  },
-  daysBadge: {
-    backgroundColor: Colors.surfaceHigh,
-    borderRadius: Radius.sm,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
-  },
-  daysBadgeToday: {
-    backgroundColor: Colors.primaryLight,
-    borderWidth: 1,
-    borderColor: Colors.primary,
-  },
-  daysText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: Colors.textSecondary,
-  },
-  daysTextToday: {
-    color: Colors.primary,
-  },
   emptyText: {
     color: Colors.textSecondary,
     textAlign: 'center',
     marginTop: 40,
     fontSize: 15,
-  },
-  deleteBtn: {
-    padding: Spacing.xs,
-    marginLeft: Spacing.xs,
-  },
-  deleteBtnText: {
-    fontSize: 16,
   },
 });
