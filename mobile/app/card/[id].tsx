@@ -15,7 +15,10 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import Voice, { SpeechResultsEvent, SpeechErrorEvent } from '@react-native-community/voice';
+import {
+  ExpoSpeechRecognitionModule,
+  useSpeechRecognitionEvent,
+} from 'expo-speech-recognition';
 import { getEvent, generateCard, updateCard, sendCard } from '../../lib/api';
 import { getLanguage } from '../../lib/storage';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
@@ -59,40 +62,29 @@ export default function CardScreen() {
       .finally(() => setLoadingEvent(false));
   }, [id]);
 
-  useEffect(() => {
-    Voice.onSpeechPartialResults = (e: SpeechResultsEvent) => {
-      const partial = e.value?.[0] ?? '';
-      voiceNoteRef.current = partial;
-      setVoiceNote(partial);
-    };
+  // Live interim + final transcript
+  useSpeechRecognitionEvent('result', (event) => {
+    const text = event.results[0]?.transcript ?? '';
+    voiceNoteRef.current = text;
+    setVoiceNote(text);
+  });
 
-    Voice.onSpeechResults = (e: SpeechResultsEvent) => {
-      const result = e.value?.[0] ?? '';
-      voiceNoteRef.current = result;
-      setVoiceNote(result);
-    };
+  // Auto-generate when recognition ends
+  useSpeechRecognitionEvent('end', () => {
+    setIsListening(false);
+    stopPulse();
+    if (voiceNoteRef.current.trim()) {
+      autoGenerate(voiceNoteRef.current.trim());
+    }
+  });
 
-    Voice.onSpeechEnd = () => {
-      setIsListening(false);
-      stopPulse();
-      if (voiceNoteRef.current.trim()) {
-        autoGenerate(voiceNoteRef.current.trim());
-      }
-    };
-
-    Voice.onSpeechError = (e: SpeechErrorEvent) => {
-      setIsListening(false);
-      stopPulse();
-      const code = e.error?.code;
-      if (code !== '5' && code !== 5 as any) {
-        Alert.alert('Voice error', e.error?.message ?? 'Unknown error');
-      }
-    };
-
-    return () => {
-      Voice.destroy().then(() => Voice.removeAllListeners());
-    };
-  }, []);
+  useSpeechRecognitionEvent('error', (event) => {
+    setIsListening(false);
+    stopPulse();
+    if (event.error !== 'no-speech') {
+      Alert.alert('Voice error', event.message ?? event.error);
+    }
+  });
 
   function startPulse() {
     pulseLoop.current = Animated.loop(
@@ -110,22 +102,25 @@ export default function CardScreen() {
   }
 
   async function startListening() {
-    try {
-      voiceNoteRef.current = '';
-      setVoiceNote('');
-      const lang = await getLanguage();
-      await Voice.start(lang === 'zh' ? 'zh-TW' : 'en-US');
-      setIsListening(true);
-      startPulse();
-    } catch (err: any) {
-      Alert.alert('Could not start microphone', err.message);
+    const { granted } = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+    if (!granted) {
+      Alert.alert('Permission required', 'Microphone access is needed for voice input.');
+      return;
     }
+    voiceNoteRef.current = '';
+    setVoiceNote('');
+    const lang = await getLanguage();
+    ExpoSpeechRecognitionModule.start({
+      lang: lang === 'zh' ? 'zh-TW' : 'en-US',
+      continuous: false,
+      interimResults: true,
+    });
+    setIsListening(true);
+    startPulse();
   }
 
-  async function stopListening() {
-    try {
-      await Voice.stop();
-    } catch {}
+  function stopListening() {
+    ExpoSpeechRecognitionModule.stop();
     setIsListening(false);
     stopPulse();
   }

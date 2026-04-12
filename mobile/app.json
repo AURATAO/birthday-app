@@ -38,7 +38,13 @@
     },
     "plugins": [
       "expo-router",
-      "@react-native-community/voice",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow Samantha to access your microphone.",
+          "speechRecognitionPermission": "Allow Samantha to recognize your speech."
+        }
+      ],
       [
         "expo-notifications",
         {
