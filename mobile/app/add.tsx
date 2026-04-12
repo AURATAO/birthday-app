@@ -22,9 +22,12 @@ import { parseVoice, createPerson, createEvent } from '../lib/api';
 import { getLanguage } from '../lib/storage';
 import { Colors, Spacing, Radius, Typography } from '../constants/theme';
 
+type Step = 'mic' | 'form';
+
 export default function AddScreen() {
   const router = useRouter();
 
+  const [step, setStep] = useState<Step>('mic');
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [parsing, setParsing] = useState(false);
@@ -40,14 +43,12 @@ export default function AddScreen() {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
 
-  // Live interim + final transcript
   useSpeechRecognitionEvent('result', (event) => {
     const text = event.results[0]?.transcript ?? '';
     transcriptRef.current = text;
     setTranscript(text);
   });
 
-  // Auto-parse when recognition ends (silence timeout or manual stop)
   useSpeechRecognitionEvent('end', () => {
     setIsListening(false);
     stopPulse();
@@ -59,7 +60,6 @@ export default function AddScreen() {
   useSpeechRecognitionEvent('error', (event) => {
     setIsListening(false);
     stopPulse();
-    // 'no-speech' is not an error worth showing
     if (event.error !== 'no-speech') {
       Alert.alert('Voice error', event.message ?? event.error);
     }
@@ -112,16 +112,12 @@ export default function AddScreen() {
       if (parsed.birthday) setBirthday(parsed.birthday);
       if (parsed.relationship) setRelationship(parsed.relationship);
       if (parsed.notes) setNotes(parsed.notes);
+      setStep('form');
     } catch (err: any) {
       Alert.alert('Parse error', err.message);
     } finally {
       setParsing(false);
     }
-  }
-
-  async function handleParse() {
-    if (!transcript.trim()) return;
-    await autoParse(transcript.trim());
   }
 
   async function handleSave() {
@@ -154,6 +150,56 @@ export default function AddScreen() {
     }
   }
 
+  // ── Step: mic ──────────────────────────────────────────────────────────────
+  if (step === 'mic') {
+    return (
+      <View style={styles.container}>
+        <StatusBar style="light" />
+
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <Text style={styles.backIcon}>←</Text>
+          </TouchableOpacity>
+          <Text style={styles.title}>Add Birthday</Text>
+        </View>
+
+        <View style={styles.micScreen}>
+          {parsing ? (
+            <>
+              <ActivityIndicator color={Colors.primary} size="large" />
+              <Text style={styles.micScreenHint}>Understanding…</Text>
+            </>
+          ) : (
+            <>
+              <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+                <TouchableOpacity
+                  style={[styles.micBtn, isListening && styles.micBtnActive]}
+                  onPress={isListening ? stopListening : startListening}
+                  activeOpacity={0.75}
+                >
+                  <Text style={styles.micIcon}>{isListening ? '⏹' : '🎤'}</Text>
+                </TouchableOpacity>
+              </Animated.View>
+
+              <Text style={styles.micScreenHint}>
+                {isListening
+                  ? 'Listening… tap to stop'
+                  : 'Say something like\n"Sarah\'s birthday is June 12th, she\'s my best friend"'}
+              </Text>
+
+              {transcript ? (
+                <View style={styles.transcriptBox}>
+                  <Text style={styles.transcriptText}>{transcript}</Text>
+                </View>
+              ) : null}
+            </>
+          )}
+        </View>
+      </View>
+    );
+  }
+
+  // ── Step: form ─────────────────────────────────────────────────────────────
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -162,10 +208,10 @@ export default function AddScreen() {
       <StatusBar style="light" />
 
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => setStep('mic')} style={styles.backBtn}>
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>Add Birthday</Text>
+        <Text style={styles.title}>Confirm Details</Text>
       </View>
 
       <ScrollView
@@ -173,50 +219,6 @@ export default function AddScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Mic button */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Voice input</Text>
-
-          <View style={styles.micRow}>
-            <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-              <TouchableOpacity
-                style={[styles.micBtn, isListening && styles.micBtnActive]}
-                onPress={isListening ? stopListening : startListening}
-                activeOpacity={0.75}
-              >
-                <Text style={styles.micIcon}>{isListening ? '⏹' : '🎤'}</Text>
-              </TouchableOpacity>
-            </Animated.View>
-            <Text style={styles.micHint}>
-              {isListening ? 'Listening… tap to stop' : 'Tap to speak'}
-            </Text>
-          </View>
-
-          {transcript ? (
-            <View style={styles.transcriptBox}>
-              <Text style={styles.transcriptText}>{transcript}</Text>
-            </View>
-          ) : null}
-
-          {transcript ? (
-            <TouchableOpacity
-              style={[styles.parseBtn, parsing && styles.btnDisabled]}
-              onPress={handleParse}
-              disabled={parsing}
-              activeOpacity={0.8}
-            >
-              {parsing ? (
-                <ActivityIndicator color={Colors.primary} size="small" />
-              ) : (
-                <Text style={styles.parseBtnText}>Auto-fill from transcript</Text>
-              )}
-            </TouchableOpacity>
-          ) : null}
-        </View>
-
-        <View style={styles.divider} />
-
-        {/* Name */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Name *</Text>
           <TextInput
@@ -229,7 +231,6 @@ export default function AddScreen() {
           />
         </View>
 
-        {/* Birthday */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Birthday *</Text>
           <TextInput
@@ -242,7 +243,6 @@ export default function AddScreen() {
           />
         </View>
 
-        {/* Relationship */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Relationship</Text>
           <TextInput
@@ -254,7 +254,6 @@ export default function AddScreen() {
           />
         </View>
 
-        {/* Phone */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Phone</Text>
           <TextInput
@@ -267,7 +266,6 @@ export default function AddScreen() {
           />
         </View>
 
-        {/* Notes */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Notes</Text>
           <TextInput
@@ -322,6 +320,59 @@ const styles = StyleSheet.create({
     ...Typography.h2,
     fontWeight: '600',
   },
+  // ── Mic screen ──────────────────────────────────────────────────────────────
+  micScreen: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.xl,
+    gap: Spacing.xl,
+  },
+  micBtn: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: Colors.surface,
+    borderWidth: 1.5,
+    borderColor: Colors.surfaceHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  micBtnActive: {
+    backgroundColor: 'rgba(226, 75, 74, 0.15)',
+    borderColor: Colors.danger,
+    shadowColor: Colors.danger,
+  },
+  micIcon: {
+    fontSize: 36,
+  },
+  micScreenHint: {
+    fontSize: 15,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  transcriptBox: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 13,
+    borderWidth: 1,
+    borderColor: Colors.surfaceHigh,
+    width: '100%',
+  },
+  transcriptText: {
+    color: Colors.textPrimary,
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+  },
+  // ── Form ────────────────────────────────────────────────────────────────────
   scroll: {
     paddingHorizontal: Spacing.xl,
     paddingBottom: 52,
@@ -337,48 +388,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1.1,
   },
-  micRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.lg,
-    paddingVertical: Spacing.sm,
-  },
-  micBtn: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: Colors.surface,
-    borderWidth: 1.5,
-    borderColor: Colors.surfaceHigh,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  micBtnActive: {
-    backgroundColor: 'rgba(226, 75, 74, 0.15)',
-    borderColor: Colors.danger,
-  },
-  micIcon: {
-    fontSize: 26,
-  },
-  micHint: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    fontWeight: '500',
-  },
-  transcriptBox: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.md,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: 13,
-    borderWidth: 1,
-    borderColor: Colors.surfaceHigh,
-    minHeight: 60,
-  },
-  transcriptText: {
-    color: Colors.textPrimary,
-    fontSize: 15,
-    lineHeight: 22,
-  },
   input: {
     backgroundColor: Colors.surface,
     borderRadius: Radius.md,
@@ -392,24 +401,6 @@ const styles = StyleSheet.create({
   inputMultiline: {
     minHeight: 88,
     paddingTop: 13,
-  },
-  parseBtn: {
-    backgroundColor: Colors.surfaceHigh,
-    borderRadius: Radius.md,
-    paddingVertical: 11,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.primary,
-  },
-  parseBtnText: {
-    color: Colors.primary,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: Colors.surfaceHigh,
-    marginVertical: Spacing.xs,
   },
   saveBtn: {
     backgroundColor: Colors.primary,

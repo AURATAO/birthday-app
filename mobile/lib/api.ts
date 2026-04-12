@@ -35,6 +35,9 @@ export const createPerson = (body: CreatePersonBody) =>
 export const updatePerson = (id: string, body: UpdatePersonBody) =>
   apiFetch(`/api/people/${id}`, { method: 'PUT', body: JSON.stringify(body) });
 
+export const updateEvent = (id: string, recurring: boolean) =>
+  apiFetch(`/api/events/${id}`, { method: 'PUT', body: JSON.stringify({ recurring }) });
+
 export const deletePerson = (id: string) =>
   apiFetch(`/api/people/${id}`, { method: 'DELETE' });
 
@@ -81,6 +84,7 @@ export const savePushToken = (token: string) =>
 
 export interface UpcomingEvent {
   id: string;
+  person_id: string;
   name: string;
   relationship: string;
   birthday: string;

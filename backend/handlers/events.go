@@ -19,12 +19,48 @@ type CreateEventRequest struct {
 
 type UpcomingEvent struct {
 	ID           string `json:"id"`
+	PersonID     string `json:"person_id"`
 	Name         string `json:"name"`
 	Relationship string `json:"relationship"`
 	Birthday     string `json:"birthday"` // event_date, named for frontend compatibility
 	EventType    string `json:"event_type"`
 	DaysUntil    int    `json:"days_until"`
 	RemindDays   int    `json:"remind_days"`
+}
+
+type UpdateEventRequest struct {
+	Recurring *bool `json:"recurring"`
+}
+
+func UpdateEvent(c *gin.Context) {
+	eventID := c.Param("id")
+	userID, _ := c.Get("user_id")
+
+	var req UpdateEventRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if req.Recurring == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "recurring field required"})
+		return
+	}
+
+	tag, err := DB.Exec(context.Background(),
+		`UPDATE events SET recurring = $1 WHERE id = $2 AND user_id = $3`,
+		*req.Recurring, eventID, userID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "event not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
 func CreateEvent(c *gin.Context) {
@@ -88,6 +124,7 @@ func GetUpcomingEvents(c *gin.Context) {
 	rows, err := DB.Query(context.Background(), `
 		SELECT
 		  e.id,
+		  p.id AS person_id,
 		  p.name,
 		  p.relationship,
 		  e.event_date,
@@ -114,7 +151,7 @@ func GetUpcomingEvents(c *gin.Context) {
 	for rows.Next() {
 		var ev UpcomingEvent
 		var eventDate time.Time
-		if err := rows.Scan(&ev.ID, &ev.Name, &ev.Relationship, &eventDate, &ev.EventType, &ev.RemindDays, &ev.DaysUntil); err != nil {
+		if err := rows.Scan(&ev.ID, &ev.PersonID, &ev.Name, &ev.Relationship, &eventDate, &ev.EventType, &ev.RemindDays, &ev.DaysUntil); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}

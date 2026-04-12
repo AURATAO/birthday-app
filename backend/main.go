@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 
+	"birthday-app/cron"
 	"birthday-app/handlers"
 	"birthday-app/middleware"
 
@@ -27,6 +28,7 @@ func main() {
 	defer pool.Close()
 
 	handlers.InitDB(pool)
+	cron.StartReminderCron()
 
 	r := gin.Default()
 
@@ -57,6 +59,7 @@ func main() {
 		api.POST("/events", handlers.CreateEvent)
 		api.GET("/events/upcoming", handlers.GetUpcomingEvents)
 		api.GET("/events/:id", handlers.GetEvent)
+		api.PUT("/events/:id", handlers.UpdateEvent)
 
 		api.POST("/voice/parse", handlers.ParseVoice)
 
@@ -66,6 +69,7 @@ func main() {
 		api.POST("/card/:id/send", handlers.SendCard)
 
 		api.POST("/push-token", handlers.SavePushToken)
+		api.GET("/test-notification", handlers.TestNotification)
 
 		api.DELETE("/account", handlers.DeleteAccount)
 	}

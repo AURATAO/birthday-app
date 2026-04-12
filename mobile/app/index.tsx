@@ -12,8 +12,10 @@ import {
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { supabase } from '../lib/supabase';
-import { getUpcomingBirthdays, UpcomingEvent } from '../lib/api';
+import { getUpcomingBirthdays, deletePerson, UpcomingEvent } from '../lib/api';
 import { Colors, Spacing, Radius } from '../constants/theme';
 
 export default function HomeScreen() {
@@ -72,6 +74,28 @@ export default function HomeScreen() {
     }
   }
 
+  async function handleDelete(item: UpcomingEvent) {
+    Alert.alert(
+      'Delete Birthday',
+      `Remove ${item.name}'s birthday?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deletePerson(item.person_id);
+              setBirthdays((prev) => prev.filter((b) => b.id !== item.id));
+            } catch (err: any) {
+              Alert.alert('Error', err.message);
+            }
+          },
+        },
+      ]
+    );
+  }
+
   const firstName = userEmail.split('@')[0].split('.')[0];
   const displayName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
 
@@ -79,90 +103,111 @@ export default function HomeScreen() {
   const greeting =
     hour < 12 ? 'good morning' : hour < 17 ? 'good afternoon' : 'good evening';
 
+  const renderRightActions = useCallback(
+    (item: UpcomingEvent) => (
+      <TouchableOpacity
+        style={styles.deleteAction}
+        onPress={() => handleDelete(item)}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.deleteActionText}>Delete</Text>
+      </TouchableOpacity>
+    ),
+    []
+  );
+
   const renderBirthday = useCallback(({ item }: { item: UpcomingEvent }) => {
     const isToday = item.days_until === 0;
     const isTomorrow = item.days_until === 1;
     const label = isToday ? 'Today!' : isTomorrow ? 'Tomorrow' : `in ${item.days_until} days`;
 
     return (
-      <TouchableOpacity
-        style={styles.birthdayCard}
-        onPress={() => router.push(`/card/${item.id}`)}
-        activeOpacity={0.75}
+      <ReanimatedSwipeable
+        renderRightActions={() => renderRightActions(item)}
+        overshootRight={false}
+        friction={2}
       >
-        <View style={styles.birthdayAvatar}>
-          <Text style={styles.birthdayEmoji}>🎂</Text>
-        </View>
-        <View style={styles.birthdayInfo}>
-          <Text style={styles.birthdayName}>{item.name}</Text>
-          <Text style={styles.birthdayDate}>
-            {item.relationship ? `${item.relationship} · ` : ''}{item.birthday}
-          </Text>
-        </View>
-        <View style={[styles.daysBadge, isToday && styles.daysBadgeToday]}>
-          <Text style={[styles.daysText, isToday && styles.daysTextToday]}>{label}</Text>
-        </View>
-      </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.birthdayCard}
+          onPress={() => router.push(`/card/${item.id}`)}
+          activeOpacity={0.75}
+        >
+          <View style={styles.birthdayAvatar}>
+            <Text style={styles.birthdayEmoji}>🎂</Text>
+          </View>
+          <View style={styles.birthdayInfo}>
+            <Text style={styles.birthdayName}>{item.name}</Text>
+            <Text style={styles.birthdayDate}>
+              {item.relationship ? `${item.relationship} · ` : ''}{item.birthday}
+            </Text>
+          </View>
+          <View style={[styles.daysBadge, isToday && styles.daysBadgeToday]}>
+            <Text style={[styles.daysText, isToday && styles.daysTextToday]}>{label}</Text>
+          </View>
+        </TouchableOpacity>
+      </ReanimatedSwipeable>
     );
   }, []);
 
   return (
-    <View style={styles.container}>
-      <StatusBar style="light" />
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <View style={styles.container}>
+        <StatusBar style="light" />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>
-            {greeting},{displayName ? ` ${displayName}` : ''}
-          </Text>
-          <Text style={styles.appName}>samantha</Text>
-        </View>
-        <TouchableOpacity onPress={() => router.push('/settings')} style={styles.settingsBtn}>
-          <View style={styles.settingsCircle}>
-            <Text style={styles.settingsInitial}>
-              {displayName ? displayName[0].toUpperCase() : '?'}
+        {/* Header */}
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.greeting}>
+              {greeting},{displayName ? ` ${displayName}` : ''}
             </Text>
+            <Text style={styles.appName}>samantha</Text>
           </View>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity onPress={() => router.push('/settings')} style={styles.settingsBtn}>
+            <View style={styles.settingsCircle}>
+              <Text style={styles.settingsInitial}>
+                {displayName ? displayName[0].toUpperCase() : '?'}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </View>
 
-      {/* Mic Section — taps navigate to /add */}
-      <View style={styles.micSection}>
-        <Animated.View style={[styles.micRing2, { transform: [{ scale: ring2Anim }] }]}>
-          <Animated.View style={[styles.micRing1, { transform: [{ scale: ring1Anim }] }]}>
-            <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-              <TouchableOpacity
-                style={styles.micButton}
-                onPress={() => router.push('/add' as any)}
-                activeOpacity={0.9}
-              >
-                <Text style={styles.micIcon}>🎤</Text>
-              </TouchableOpacity>
+        {/* Mic Section — taps navigate to /add */}
+        <View style={styles.micSection}>
+          <Animated.View style={[styles.micRing2, { transform: [{ scale: ring2Anim }] }]}>
+            <Animated.View style={[styles.micRing1, { transform: [{ scale: ring1Anim }] }]}>
+              <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+                <TouchableOpacity
+                  style={styles.micButton}
+                  onPress={() => router.push('/add' as any)}
+                  activeOpacity={0.9}
+                >
+                  <Text style={styles.micIcon}>🎤</Text>
+                </TouchableOpacity>
+              </Animated.View>
             </Animated.View>
           </Animated.View>
-        </Animated.View>
-        <Text style={styles.micLabel}>tap to add a birthday</Text>
-      </View>
+          <Text style={styles.micLabel}>tap to add a birthday</Text>
+        </View>
 
-      {/* Birthdays List */}
-      <View style={styles.listSection}>
-        <Text style={styles.sectionTitle}>Upcoming</Text>
-        {loading ? (
-          <ActivityIndicator color={Colors.primary} style={{ marginTop: Spacing.xxl }} />
-        ) : birthdays.length === 0 ? (
-          <Text style={styles.emptyText}>No upcoming birthdays — add one above</Text>
-        ) : (
-          <FlatList
-            data={birthdays}
-            keyExtractor={(item) => item.id}
-            renderItem={renderBirthday}
-            contentContainerStyle={styles.listContent}
-            showsVerticalScrollIndicator={false}
-          />
-        )}
+        {/* Birthdays List */}
+        <View style={styles.listSection}>
+          <Text style={styles.sectionTitle}>Upcoming</Text>
+          {loading ? (
+            <ActivityIndicator color={Colors.primary} style={{ marginTop: Spacing.xxl }} />
+          ) : birthdays.length === 0 ? (
+            <Text style={styles.emptyText}>No upcoming birthdays — add one above</Text>
+          ) : (
+            <FlatList
+              data={birthdays}
+              keyExtractor={(item) => item.id}
+              renderItem={renderBirthday}
+              contentContainerStyle={styles.listContent}
+              showsVerticalScrollIndicator={false}
+            />
+          )}
+        </View>
       </View>
-    </View>
+    </GestureHandlerRootView>
   );
 }
 
@@ -326,5 +371,18 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 40,
     fontSize: 15,
+  },
+  deleteAction: {
+    backgroundColor: Colors.danger,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 88,
+    borderRadius: Radius.lg,
+    marginLeft: Spacing.sm,
+  },
+  deleteActionText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
   },
 });
