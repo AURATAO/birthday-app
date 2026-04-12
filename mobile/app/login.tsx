@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,6 @@ import {
   Alert,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
-import * as Linking from 'expo-linking';
 import { StatusBar } from 'expo-status-bar';
 import { supabase } from '../lib/supabase';
 import { Colors, Spacing, Radius } from '../constants/theme';
@@ -18,23 +17,15 @@ WebBrowser.maybeCompleteAuthSession();
 export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    const subscription = Linking.addEventListener('url', async ({ url }) => {
-      if (url.includes('access_token') || url.includes('code=')) {
-        // supabase-js v2 picks up the session automatically via onAuthStateChange
-      }
-    });
-    return () => subscription.remove();
-  }, []);
+  const REDIRECT_URL = 'samantha://auth/callback';
 
   async function handleGoogleLogin() {
     setLoading(true);
     try {
-      const redirectUrl = Linking.createURL('/');
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: redirectUrl,
+          redirectTo: REDIRECT_URL,
           skipBrowserRedirect: true,
         },
       });
@@ -42,7 +33,7 @@ export default function LoginScreen() {
       if (error) throw error;
       if (!data.url) throw new Error('No OAuth URL returned');
 
-      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+      const result = await WebBrowser.openAuthSessionAsync(data.url, REDIRECT_URL);
 
       if (result.type === 'success' && result.url) {
         const url = new URL(result.url);

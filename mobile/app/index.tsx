@@ -60,6 +60,8 @@ export default function HomeScreen() {
   );
 
   async function fetchBirthdays() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
     try {
       const data = await getUpcomingBirthdays();
       setBirthdays(Array.isArray(data) ? data : []);
