@@ -29,6 +29,7 @@ import {
   createEvent,
   UpcomingEvent,
 } from '../lib/api';
+import { registerForPushNotifications } from './_layout';
 import { getLanguage } from '../lib/storage';
 import { Colors, Spacing, Radius } from '../constants/theme';
 
@@ -391,6 +392,9 @@ export default function HomeScreen() {
             {isListening && transcript ? (
               <Text style={styles.transcriptText} numberOfLines={2}>{transcript}</Text>
             ) : null}
+            <TouchableOpacity onPress={registerForPushNotifications} style={styles.debugBtn}>
+              <Text style={styles.debugBtnText}>Get Push Token</Text>
+            </TouchableOpacity>
           </>
         )}
       </View>
@@ -887,5 +891,18 @@ filterEmojiText: {
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
+  },
+  debugBtn: {
+    marginTop: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 8,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.surfaceHigh,
+    borderWidth: 1,
+    borderColor: Colors.textMuted,
+  },
+  debugBtnText: {
+    color: Colors.textSecondary,
+    fontSize: 12,
   },
 });
