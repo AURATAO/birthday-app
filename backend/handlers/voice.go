@@ -19,10 +19,14 @@ type ParseVoiceRequest struct {
 
 type ParsedEvent struct {
 	Name         string `json:"name"`
-	Birthday     string `json:"birthday"` // YYYY-MM-DD
+	Date         string `json:"date"` // YYYY-MM-DD
 	Relationship string `json:"relationship"`
 	Notes        string `json:"notes"`
 	Language     string `json:"language"`
+	Category     string `json:"category"`  // birthday|milestone|anniversary|hard_date
+	Emoji        string `json:"emoji"`
+	Recurring    bool   `json:"recurring"`
+	Title        string `json:"title"`
 }
 
 type claudeMessage struct {
@@ -62,19 +66,38 @@ func ParseVoice(c *gin.Context) {
 		`You are a multilingual personal relationship assistant.
 The user may speak in ANY language — English, Mandarin, Cantonese, Italian, French, Japanese, etc.
 
-Detect the language from this transcript and respond in the SAME language.
+Detect the language from this transcript and respond in the SAME language for relationship/notes fields.
+
+Detect which category this event belongs to:
+- birthday: someone's birthday
+- milestone: one-time life event (interview, exam, surgery, first day, appointment, big moment)
+- anniversary: recurring relationship date (wedding anniversary, friendship anniversary)
+- hard_date: grief, loss, death anniversary, difficult date
+
+Also assign the correct emoji:
+- birthday → 🎂
+- milestone → pick best fit: 💼🎓🏥✈️🎉⭐
+- anniversary → 💍💑👫
+- hard_date → 🕯️🤍
 
 Extract and return ONLY raw JSON, no markdown, no explanation:
 {
   "name": "person's name",
-  "birthday": "date in YYYY-MM-DD format",
+  "date": "date in YYYY-MM-DD format",
   "relationship": "relationship in same language as transcript",
   "notes": "any details in same language as transcript",
-  "language": "detected language code e.g. zh-TW, en, it, fr, ja"
+  "language": "detected language code e.g. zh-TW, en, it, fr, ja",
+  "category": "birthday|milestone|anniversary|hard_date",
+  "emoji": "single emoji character",
+  "recurring": true or false,
+  "title": "short title for the event e.g. Mark's job interview"
 }
 
-If a field is not mentioned return empty string.
-Assume year %d if no year mentioned.
+Rules:
+- For milestones: recurring = false (one-time event)
+- For birthdays, anniversaries, hard_dates: recurring = true
+- If a field is not mentioned return empty string (or false for recurring).
+- Assume year %d if no year mentioned.
 
 Transcript: %s`,
 		time.Now().Year(), req.Transcript,
@@ -82,7 +105,7 @@ Transcript: %s`,
 
 	reqBody, _ := json.Marshal(claudeRequest{
 		Model:     "claude-haiku-4-5-20251001",
-		MaxTokens: 256,
+		MaxTokens: 512,
 		Messages:  []claudeMessage{{Role: "user", Content: prompt}},
 	})
 

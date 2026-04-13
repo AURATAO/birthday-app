@@ -13,6 +13,7 @@ type CreateEventRequest struct {
 	Type       string `json:"type"`
 	EventDate  string `json:"event_date" binding:"required"`
 	Title      string `json:"title"`
+	Emoji      string `json:"emoji"`
 	RemindDays *int   `json:"remind_days"`
 	Recurring  *bool  `json:"recurring"`
 }
@@ -24,6 +25,8 @@ type UpcomingEvent struct {
 	Relationship string `json:"relationship"`
 	Birthday     string `json:"birthday"` // event_date, named for frontend compatibility
 	EventType    string `json:"event_type"`
+	Emoji        string `json:"emoji"`
+	Title        string `json:"title"`
 	DaysUntil    int    `json:"days_until"`
 	RemindDays   int    `json:"remind_days"`
 }
@@ -86,10 +89,10 @@ func CreateEvent(c *gin.Context) {
 
 	var id string
 	err := DB.QueryRow(context.Background(),
-		`INSERT INTO events (user_id, person_id, type, event_date, title, remind_days, recurring)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`INSERT INTO events (user_id, person_id, type, event_date, title, emoji, remind_days, recurring)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		 RETURNING id`,
-		userID, req.PersonID, req.Type, req.EventDate, req.Title, remindDays, recurring,
+		userID, req.PersonID, req.Type, req.EventDate, req.Title, req.Emoji, remindDays, recurring,
 	).Scan(&id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -104,12 +107,12 @@ func GetEvent(c *gin.Context) {
 	var ev UpcomingEvent
 	var eventDate time.Time
 	err := DB.QueryRow(context.Background(),
-		`SELECT e.id, p.name, p.relationship, e.event_date, e.type, e.remind_days
+		`SELECT e.id, p.name, p.relationship, e.event_date, e.type, e.remind_days, COALESCE(e.emoji, '') AS emoji
 		 FROM events e
 		 JOIN people p ON p.id = e.person_id
 		 WHERE e.id = $1`,
 		id,
-	).Scan(&ev.ID, &ev.Name, &ev.Relationship, &eventDate, &ev.EventType, &ev.RemindDays)
+	).Scan(&ev.ID, &ev.Name, &ev.Relationship, &eventDate, &ev.EventType, &ev.RemindDays, &ev.Emoji)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "event not found"})
 		return
@@ -129,6 +132,8 @@ func GetUpcomingEvents(c *gin.Context) {
 		  p.relationship,
 		  e.event_date,
 		  e.type AS event_type,
+		  COALESCE(e.emoji, '') AS emoji,
+		  COALESCE(e.title, '') AS event_title,
 		  e.remind_days,
 		  CASE
 		    WHEN MAKE_DATE(EXTRACT(YEAR FROM CURRENT_DATE)::int, EXTRACT(MONTH FROM e.event_date)::int, EXTRACT(DAY FROM e.event_date)::int) >= CURRENT_DATE
@@ -151,7 +156,7 @@ func GetUpcomingEvents(c *gin.Context) {
 	for rows.Next() {
 		var ev UpcomingEvent
 		var eventDate time.Time
-		if err := rows.Scan(&ev.ID, &ev.PersonID, &ev.Name, &ev.Relationship, &eventDate, &ev.EventType, &ev.RemindDays, &ev.DaysUntil); err != nil {
+		if err := rows.Scan(&ev.ID, &ev.PersonID, &ev.Name, &ev.Relationship, &eventDate, &ev.EventType, &ev.Emoji, &ev.Title, &ev.RemindDays, &ev.DaysUntil); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}

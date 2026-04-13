@@ -32,17 +32,20 @@ func GenerateCard(c *gin.Context) {
 	}
 
 	// Fetch person + event details by event ID
-	var name, relationship, notes, language string
-	var birthdayDate time.Time
+	var name, relationship, notes, language, category, eventTitle string
+	var eventDate time.Time
 	err := DB.QueryRow(context.Background(),
-		`SELECT p.name, e.event_date, p.relationship, p.notes, COALESCE(p.language, '') as language
+		`SELECT p.name, e.event_date, p.relationship, p.notes,
+		        COALESCE(p.language, '') AS language,
+		        COALESCE(e.type, 'birthday') AS category,
+		        COALESCE(e.title, '') AS event_title
 		 FROM events e
 		 JOIN people p ON p.id = e.person_id
 		 WHERE e.id = $1`,
 		req.BirthdayID,
-	).Scan(&name, &birthdayDate, &relationship, &notes, &language)
+	).Scan(&name, &eventDate, &relationship, &notes, &language, &category, &eventTitle)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "birthday not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "event not found"})
 		return
 	}
 
@@ -56,23 +59,73 @@ func GenerateCard(c *gin.Context) {
 		notesLine = fmt.Sprintf("Notes about them: %s\n", notes)
 	}
 
+	// Category-aware event description and tone guide
+	var eventDesc, toneGuide string
+	switch category {
+	case "milestone":
+		desc := eventTitle
+		if desc == "" {
+			desc = "an important milestone"
+		}
+		eventDesc = fmt.Sprintf("Write an encouraging, supportive message for %s on the occasion of: %s (on %s).",
+			name, desc, eventDate.Format("January 2"))
+		toneGuide = `This is a milestone message. Tone guide:
+- Lead with genuine belief in them ("I believe in you", "you've got this")
+- Acknowledge the significance of the moment without over-hyping it
+- Warm and personal, like a close friend cheering them on
+- No generic motivational clichés`
+
+	case "anniversary":
+		eventDesc = fmt.Sprintf("Write a message for %s to mark their anniversary on %s.",
+			name, eventDate.Format("January 2"))
+		toneGuide = `This is an anniversary message. Tone guide:
+- Deep warmth and appreciation for the time shared
+- Romantic if the relationship is a partner/spouse, otherwise deeply warm and affectionate
+- Acknowledge the time that has passed and what it means
+- Heartfelt, not cheesy`
+
+	case "hard_date":
+		desc := eventTitle
+		if desc == "" {
+			desc = "a difficult day"
+		}
+		eventDesc = fmt.Sprintf("Write a gentle message for %s on %s — this is a hard date: %s.",
+			name, eventDate.Format("January 2"), desc)
+		toneGuide = `This is a hard_date message. Tone guide:
+- Gentle, soft, and present — "I'm thinking of you today", "I'm here"
+- Acknowledge the weight of the day without trying to fix it
+- No toxic positivity, no silver linings, no "stay strong"
+- Short is better — sometimes less is more`
+
+	default: // birthday
+		eventDesc = fmt.Sprintf("Write a warm, personal birthday message for %s, who is turning %d on %s.",
+			name, calculateAge(eventDate), eventDate.Format("January 2"))
+		toneGuide = `This is a birthday message. Tone guide:
+- Celebratory and warm, specific to this person
+- Personal and heartfelt, not generic
+- Joyful without being over-the-top`
+	}
+
 	languageLine := ""
-	if language != "" {
-		languageLine = fmt.Sprintf("\nWrite the birthday message in this language: %s\nMake it feel natural and warm in that language, not like a translation.\n", language)
+	if language == "zh-TW" || language == "zh" {
+		languageLine = "\nWrite the message in Traditional Chinese (繁體中文). Make it feel natural and warm, not like a translation.\n"
+	} else if language != "" && language != "en" {
+		languageLine = fmt.Sprintf("\nWrite the message in this language: %s. Make it feel natural and warm, not like a translation.\n", language)
 	}
 
 	prompt := fmt.Sprintf(
-		`Write a warm, personal birthday message for %s, who is turning %d on %s.
-%s%s%sThe sender recorded this voice note about what they want to say: "%s"
+		`%s
+%s%s%s
+%s
+The sender recorded this voice note about what they want to say: "%s"
 
-Write the message as if from the sender directly to %s. Make it heartfelt and specific to the details above.
+Write the message as if from the sender directly to %s. Make it specific to the details above.
 Keep it to 3–5 sentences. Do not add a subject line or sign-off — just the message body.`,
-		name,
-		calculateAge(birthdayDate),
-		birthdayDate.Format("January 2"),
+		eventDesc,
 		relationshipLine,
 		notesLine,
 		languageLine,
+		toneGuide,
 		req.VoiceTranscript,
 		name,
 	)
