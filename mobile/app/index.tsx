@@ -348,7 +348,7 @@ export default function HomeScreen() {
           <Text style={styles.greeting}>
             {greeting},{displayName ? ` ${displayName}` : ''}
           </Text>
-          <Text style={styles.appName}>samantha</Text>
+          <Text style={styles.appName}>Samantha</Text>
         </View>
         <TouchableOpacity onPress={() => router.push('/settings')} style={styles.settingsBtn}>
           <View style={styles.settingsCircle}>
@@ -408,14 +408,32 @@ export default function HomeScreen() {
         >
           {[{ key: 'all', label: 'All' }, ...CATEGORY_CONFIG.map(c => ({ key: c.key, label: c.emoji }))].map(f => (
             <TouchableOpacity
-              key={f.key}
-              style={[styles.filterTab, activeFilter === f.key && styles.filterTabActive]}
-              onPress={() => setActiveFilter(f.key)}
-            >
-              <Text style={[styles.filterTabText, activeFilter === f.key && styles.filterTabTextActive, f.key !== 'all' && { fontSize: 22 }]}>
-                {f.label}
-              </Text>
-            </TouchableOpacity>
+  key={f.key}
+  style={[styles.filterTab, activeFilter === f.key && styles.filterTabActive]}
+  onPress={() => setActiveFilter(f.key)}
+>
+  {f.key === 'all' ? (
+    <Text
+      style={[
+        styles.filterTabText,
+        activeFilter === f.key && styles.filterTabTextActive,
+      ]}
+    >
+      {f.label}
+    </Text>
+  ) : (
+    <View style={styles.filterEmojiWrap}>
+      <Text
+        style={[
+          styles.filterEmojiText,
+          activeFilter === f.key && styles.filterTabTextActive,
+        ]}
+      >
+        {f.label}
+      </Text>
+    </View>
+  )}
+</TouchableOpacity>
           ))}
         </ScrollView>
 
@@ -641,30 +659,48 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
   },
   filterScroll: {
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.lg,
     flexGrow: 0,
   },
   filterRow: {
     flexDirection: 'row',
     gap: Spacing.xs,
+    marginBottom: Spacing.lg,
   },
-  filterTab: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 6,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.surfaceHigh,
-  },
+filterTab: {
+  minHeight: 40,
+  paddingHorizontal: Spacing.md,
+  borderRadius: 12,
+  backgroundColor: Colors.surface,
+  borderWidth: 1,
+  borderColor: Colors.surfaceHigh,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
+filterTabText: {
+  fontSize: 13,
+  color: Colors.textMuted,
+  fontWeight: '500',
+  lineHeight: 16,
+},
+
+filterEmojiWrap: {
+  height: 22,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
+filterEmojiText: {
+  fontSize: 16,
+  lineHeight: 20,
+  textAlign: 'center',
+},
   filterTabActive: {
     backgroundColor: Colors.primaryLight,
     borderColor: Colors.primary,
   },
-  filterTabText: {
-    fontSize: 13,
-    color: Colors.textMuted,
-    fontWeight: '500',
-  },
+
   filterTabTextActive: {
     color: Colors.textPrimary,
   },
@@ -778,7 +814,7 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   categoryEmoji: {
-    fontSize: 48,
+    fontSize: 35,
   },
   categoryPills: {
     flexDirection: 'row',
@@ -787,12 +823,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   categoryPill: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 6,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 8,
     borderRadius: Radius.full,
     backgroundColor: Colors.surfaceHigh,
     borderWidth: 1,
     borderColor: Colors.textMuted,
+    flexShrink: 0,
   },
   categoryPillActive: {
     backgroundColor: Colors.primaryLight,
