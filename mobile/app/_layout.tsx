@@ -6,7 +6,6 @@ import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import { savePushToken } from '../lib/api';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -102,8 +101,37 @@ export default function RootLayout() {
   useEffect(() => {
     if (!session) return;
 
-    registerForPushNotifications().then((token) => {
-      if (token) savePushToken(token).catch(() => {});
+    registerForPushNotifications().then(async (token) => {
+      if (!token) return;
+
+      const { data: { session } } = await supabase.auth.getSession();
+      console.log('Saving token, session exists:', !!session);
+      console.log('API URL:', process.env.EXPO_PUBLIC_API_URL);
+      console.log('Token:', token);
+
+      if (!session?.access_token) {
+        console.error('No session token!');
+        return;
+      }
+
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_API_URL}/api/push-token`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({
+            token: token,
+            platform: Platform.OS
+          })
+        }
+      );
+
+      const result = await response.json();
+      console.log('Save token status:', response.status);
+      console.log('Save token result:', JSON.stringify(result));
     });
 
     notificationListener.current = Notifications.addNotificationReceivedListener(() => {});
