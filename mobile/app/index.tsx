@@ -30,7 +30,7 @@ import {
   UpcomingEvent,
 } from '../lib/api';
 import { getLanguage } from '../lib/storage';
-import { Colors, Spacing, Radius, Typography } from '../constants/theme';
+import { Colors, Spacing, Radius } from '../constants/theme';
 
 type CategoryKey = 'birthday' | 'milestone' | 'anniversary' | 'hard_date';
 
@@ -293,10 +293,17 @@ export default function HomeScreen() {
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
+  const getCardTitle = (item: UpcomingEvent) => {
+    if (item.event_type === 'birthday') return item.name;
+    if (item.title) return `${item.name} · ${item.title}`;
+    return item.name;
+  };
+
   const renderBirthday = useCallback(({ item }: { item: UpcomingEvent }) => {
     const isDeleting = deletingId === item.id;
     const displayEmoji = displayEmojiForEvent(item);
-    const showTitle = item.event_type !== 'birthday' && item.title;
+    const headline = getCardTitle(item);
+    const daysLabel = item.days_until === 0 ? 'Today!' : item.days_until === 1 ? 'Tomorrow' : `in ${item.days_until} days`;
     return (
       <TouchableOpacity
         onPress={() => !deletingId && router.push(`/card/${item.id}`)}
@@ -304,16 +311,17 @@ export default function HomeScreen() {
         activeOpacity={0.75}
         style={[styles.card, isDeleting && styles.cardDeleting]}
       >
+        {/* Emoji — fixed 40 wide, never clips */}
         <Text style={styles.cardEmoji}>{displayEmoji}</Text>
+
+        {/* Text — flex:1 takes remaining space, prevents cutoff */}
         <View style={{ flex: 1 }}>
-          <Text style={Typography.h3}>
-            {item.name}{showTitle ? ` ${item.title}` : ''}
-          </Text>
-          <Text style={Typography.caption}>{item.birthday}</Text>
-          <Text style={styles.daysText}>
-            {item.days_until === 0 ? 'Today!' : item.days_until === 1 ? 'Tomorrow' : `in ${item.days_until} days`}
-          </Text>
+          <Text style={styles.cardName} numberOfLines={1}>{headline}</Text>
+          <Text style={styles.cardDate}>{item.birthday}</Text>
+          <Text style={styles.daysText}>{daysLabel}</Text>
         </View>
+
+        {/* Arrow — fixed on far right */}
         {isDeleting ? (
           <View style={styles.deleteRow}>
             <TouchableOpacity onPress={() => handleDelete(item)} style={styles.deleteBtn}>
@@ -404,7 +412,7 @@ export default function HomeScreen() {
               style={[styles.filterTab, activeFilter === f.key && styles.filterTabActive]}
               onPress={() => setActiveFilter(f.key)}
             >
-              <Text style={[styles.filterTabText, activeFilter === f.key && styles.filterTabTextActive]}>
+              <Text style={[styles.filterTabText, activeFilter === f.key && styles.filterTabTextActive, f.key !== 'all' && { fontSize: 22 }]}>
                 {f.label}
               </Text>
             </TouchableOpacity>
@@ -678,14 +686,26 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.md,
+    gap: 12,
   },
   cardDeleting: {
     backgroundColor: '#3D0A0A',
     borderColor: '#E24B4A',
   },
   cardEmoji: {
-    fontSize: 22,
+    fontSize: 28,
+    width: 40,
+    textAlign: 'center',
+  },
+  cardName: {
+    color: Colors.textPrimary,
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  cardDate: {
+    color: Colors.textSecondary,
+    fontSize: 12,
+    marginTop: 2,
   },
   daysText: {
     color: Colors.primary,
