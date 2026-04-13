@@ -73,7 +73,7 @@ func TestNotification(c *gin.Context) {
 		To:    pushToken,
 		Title: title,
 		Body:  body,
-		Data:  map[string]any{"event_id": eventID},
+		Data:  map[string]any{"screen": "card", "event_id": eventID},
 	}
 
 	buf, _ := json.Marshal([]expoPushMessage{payload})
