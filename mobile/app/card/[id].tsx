@@ -26,6 +26,13 @@ import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 
 type Step = 'mic' | 'message';
 
+const TONE_CONFIG: Record<string, { emoji: string; label: string; desc: string }> = {
+  birthday:    { emoji: '🎂', label: 'Birthday',    desc: 'warm & celebratory' },
+  milestone:   { emoji: '⭐', label: 'Milestone',   desc: 'encouraging' },
+  anniversary: { emoji: '💍', label: 'Anniversary', desc: 'deep warmth' },
+  hard_date:   { emoji: '🕯️', label: 'Hard date',   desc: 'gentle tone' },
+};
+
 function daysUntilBirthday(birthdayStr: string): number {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -41,6 +48,7 @@ export default function CardScreen() {
 
   const [personName, setPersonName] = useState('');
   const [daysUntil, setDaysUntil] = useState(0);
+  const [eventType, setEventType] = useState('birthday');
   const [loadingEvent, setLoadingEvent] = useState(true);
 
   const [step, setStep] = useState<Step>('mic');
@@ -62,6 +70,7 @@ export default function CardScreen() {
       .then((ev) => {
         setPersonName(ev.name);
         setDaysUntil(daysUntilBirthday(ev.birthday));
+        setEventType(ev.event_type ?? 'birthday');
       })
       .catch((err) => Alert.alert('Error', err.message))
       .finally(() => setLoadingEvent(false));
@@ -193,8 +202,19 @@ export default function CardScreen() {
             <ActivityIndicator color={Colors.primary} />
           ) : (
             <>
-              <Text style={styles.personName}>{personName || 'Birthday Card'}</Text>
+              <Text style={styles.personName}>{personName || 'Event'}</Text>
               {personName ? <Text style={styles.daysLabel}>{dayLabel}</Text> : null}
+              {(() => {
+                const tone = TONE_CONFIG[eventType];
+                if (!tone) return null;
+                return (
+                  <View style={styles.tonePill}>
+                    <Text style={styles.tonePillText}>
+                      {tone.emoji} {tone.label} — {tone.desc}
+                    </Text>
+                  </View>
+                );
+              })()}
             </>
           )}
         </View>
@@ -499,5 +519,20 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     fontSize: 14,
     fontWeight: '500',
+  },
+  tonePill: {
+    alignSelf: 'flex-start',
+    marginTop: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: Radius.full,
+    backgroundColor: 'rgba(124, 58, 237, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(124, 58, 237, 0.3)',
+  },
+  tonePillText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: Colors.textSecondary,
   },
 });

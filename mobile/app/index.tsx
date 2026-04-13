@@ -32,6 +32,24 @@ import {
 import { getLanguage } from '../lib/storage';
 import { Colors, Spacing, Radius, Typography } from '../constants/theme';
 
+type CategoryKey = 'birthday' | 'milestone' | 'anniversary' | 'hard_date';
+
+const CATEGORY_CONFIG: { key: CategoryKey; emoji: string; label: string }[] = [
+  { key: 'birthday',    emoji: '🎂', label: 'Birthday' },
+  { key: 'milestone',   emoji: '⭐', label: 'Milestone' },
+  { key: 'anniversary', emoji: '💍', label: 'Anniversary' },
+  { key: 'hard_date',   emoji: '🕯️', label: 'Hard date' },
+];
+
+function defaultEmojiForCategory(cat: string): string {
+  return CATEGORY_CONFIG.find(c => c.key === cat)?.emoji ?? '🎂';
+}
+
+function displayEmojiForEvent(item: UpcomingEvent): string {
+  if (item.emoji) return item.emoji;
+  return defaultEmojiForCategory(item.event_type);
+}
+
 export default function HomeScreen() {
   const router = useRouter();
 
@@ -40,6 +58,7 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [activeFilter, setActiveFilter] = useState<string>('all');
 
   // Recording state
   const [isListening, setIsListening] = useState(false);
@@ -54,6 +73,10 @@ export default function HomeScreen() {
   const [relationship, setRelationship] = useState('');
   const [notes, setNotes] = useState('');
   const [phone, setPhone] = useState('');
+  const [category, setCategory] = useState<CategoryKey>('birthday');
+  const [emoji, setEmoji] = useState('🎂');
+  const [parsedRecurring, setParsedRecurring] = useState(true);
+  const [parsedTitle, setParsedTitle] = useState('');
   const [saving, setSaving] = useState(false);
 
   // Animations — only active during recording
@@ -190,10 +213,15 @@ export default function HomeScreen() {
     try {
       const parsed = await parseVoice(text);
       setName(parsed.name ?? '');
-      setBirthday(parsed.birthday ?? '');
+      setBirthday(parsed.date ?? '');
       setRelationship(parsed.relationship ?? '');
       setNotes(parsed.notes ?? '');
       setPhone('');
+      const cat = (parsed.category as CategoryKey) ?? 'birthday';
+      setCategory(cat);
+      setEmoji(parsed.emoji || defaultEmojiForCategory(cat));
+      setParsedRecurring(parsed.recurring ?? true);
+      setParsedTitle(parsed.title ?? '');
       setShowForm(true);
     } catch (err: any) {
       Alert.alert('Parse error', err.message);
@@ -208,7 +236,7 @@ export default function HomeScreen() {
       return;
     }
     if (!birthday.trim()) {
-      Alert.alert('Required', 'Please enter a birthday (YYYY-MM-DD).');
+      Alert.alert('Required', 'Please enter a date (YYYY-MM-DD).');
       return;
     }
     setSaving(true);
@@ -219,7 +247,14 @@ export default function HomeScreen() {
         notes: notes.trim(),
         phone: phone.trim(),
       });
-      await createEvent({ person_id: personId, event_date: birthday.trim(), type: 'birthday' });
+      await createEvent({
+        person_id: personId,
+        event_date: birthday.trim(),
+        type: category,
+        title: parsedTitle.trim() || undefined,
+        emoji,
+        recurring: parsedRecurring,
+      });
       dismissForm();
       setTranscript('');
       fetchBirthdays();
@@ -237,6 +272,10 @@ export default function HomeScreen() {
     setRelationship('');
     setNotes('');
     setPhone('');
+    setCategory('birthday');
+    setEmoji('🎂');
+    setParsedRecurring(true);
+    setParsedTitle('');
   }
 
   // ── Derived display values ────────────────────────────────────────────────────
@@ -248,10 +287,16 @@ export default function HomeScreen() {
   const greeting =
     hour < 12 ? 'good morning' : hour < 17 ? 'good afternoon' : 'good evening';
 
+  const filteredBirthdays = activeFilter === 'all'
+    ? birthdays
+    : birthdays.filter(b => b.event_type === activeFilter);
+
   // ── Render ───────────────────────────────────────────────────────────────────
 
   const renderBirthday = useCallback(({ item }: { item: UpcomingEvent }) => {
     const isDeleting = deletingId === item.id;
+    const displayEmoji = displayEmojiForEvent(item);
+    const showTitle = item.event_type !== 'birthday' && item.title;
     return (
       <TouchableOpacity
         onPress={() => !deletingId && router.push(`/card/${item.id}`)}
@@ -259,8 +304,11 @@ export default function HomeScreen() {
         activeOpacity={0.75}
         style={[styles.card, isDeleting && styles.cardDeleting]}
       >
+        <Text style={styles.cardEmoji}>{displayEmoji}</Text>
         <View style={{ flex: 1 }}>
-          <Text style={Typography.h3}>{item.name}</Text>
+          <Text style={Typography.h3}>
+            {item.name}{showTitle ? ` ${item.title}` : ''}
+          </Text>
           <Text style={Typography.caption}>{item.birthday}</Text>
           <Text style={styles.daysText}>
             {item.days_until === 0 ? 'Today!' : item.days_until === 1 ? 'Tomorrow' : `in ${item.days_until} days`}
@@ -268,16 +316,10 @@ export default function HomeScreen() {
         </View>
         {isDeleting ? (
           <View style={styles.deleteRow}>
-            <TouchableOpacity
-              onPress={() => handleDelete(item)}
-              style={styles.deleteBtn}
-            >
+            <TouchableOpacity onPress={() => handleDelete(item)} style={styles.deleteBtn}>
               <Text style={styles.deleteBtnText}>Delete</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setDeletingId(null)}
-              style={styles.cancelBtn}
-            >
+            <TouchableOpacity onPress={() => setDeletingId(null)} style={styles.cancelBtn}>
               <Text style={styles.cancelBtnText}>Cancel</Text>
             </TouchableOpacity>
           </View>
@@ -336,7 +378,7 @@ export default function HomeScreen() {
               </Animated.View>
             </Animated.View>
             <Text style={styles.buttonLabel}>
-              {isListening ? 'Listening… tap to stop' : 'tap to add a birthday'}
+              {isListening ? 'Listening… tap to stop' : 'tap to add a moment'}
             </Text>
             {isListening && transcript ? (
               <Text style={styles.transcriptText} numberOfLines={2}>{transcript}</Text>
@@ -345,16 +387,39 @@ export default function HomeScreen() {
         )}
       </View>
 
-      {/* Birthday list — bottom half, scrollable */}
+      {/* Event list — bottom half, scrollable */}
       <View style={styles.listSection}>
         <Text style={styles.sectionTitle}>Upcoming</Text>
+
+        {/* Category filter tabs */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.filterScroll}
+          contentContainerStyle={styles.filterRow}
+        >
+          {[{ key: 'all', label: 'All' }, ...CATEGORY_CONFIG.map(c => ({ key: c.key, label: c.emoji }))].map(f => (
+            <TouchableOpacity
+              key={f.key}
+              style={[styles.filterTab, activeFilter === f.key && styles.filterTabActive]}
+              onPress={() => setActiveFilter(f.key)}
+            >
+              <Text style={[styles.filterTabText, activeFilter === f.key && styles.filterTabTextActive]}>
+                {f.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
         {loading ? (
           <ActivityIndicator color={Colors.primary} style={{ marginTop: Spacing.xxl }} />
-        ) : birthdays.length === 0 ? (
-          <Text style={styles.emptyText}>No upcoming birthdays — add one above</Text>
+        ) : filteredBirthdays.length === 0 ? (
+          <Text style={styles.emptyText}>
+            {activeFilter === 'all' ? 'No upcoming moments — add one above' : 'None in this category'}
+          </Text>
         ) : (
           <FlatList
-            data={birthdays}
+            data={filteredBirthdays}
             keyExtractor={(item) => item.id}
             renderItem={renderBirthday}
             contentContainerStyle={styles.listContent}
@@ -377,11 +442,32 @@ export default function HomeScreen() {
           <TouchableOpacity style={styles.sheetBackdrop} activeOpacity={1} onPress={dismissForm} />
           <View style={styles.sheet}>
             <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>Confirm Details</Text>
+
+            {/* Large emoji + tappable category pills */}
+            <View style={styles.categoryHeader}>
+              <Text style={styles.categoryEmoji}>{emoji}</Text>
+              <View style={styles.categoryPills}>
+                {CATEGORY_CONFIG.map(c => (
+                  <TouchableOpacity
+                    key={c.key}
+                    style={[styles.categoryPill, category === c.key && styles.categoryPillActive]}
+                    onPress={() => {
+                      setCategory(c.key);
+                      setEmoji(c.emoji);
+                    }}
+                  >
+                    <Text style={[styles.categoryPillText, category === c.key && styles.categoryPillTextActive]}>
+                      {c.emoji} {c.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               {([
                 { label: 'Name *', value: name, onChange: setName, placeholder: 'Full name', caps: 'words' as const },
-                { label: 'Birthday *', value: birthday, onChange: setBirthday, placeholder: 'YYYY-MM-DD', keyboard: 'numbers-and-punctuation' as const },
+                { label: 'Date *', value: birthday, onChange: setBirthday, placeholder: 'YYYY-MM-DD', keyboard: 'numbers-and-punctuation' as const },
                 { label: 'Relationship', value: relationship, onChange: setRelationship, placeholder: 'e.g. Mom, Best friend' },
                 { label: 'Phone', value: phone, onChange: setPhone, placeholder: '+1 555 000 0000', keyboard: 'phone-pad' as const },
                 { label: 'Notes', value: notes, onChange: setNotes, placeholder: 'Anything special…', multi: true },
@@ -410,7 +496,7 @@ export default function HomeScreen() {
                 {saving ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.saveBtnText}>Save Birthday</Text>
+                  <Text style={styles.saveBtnText}>Save</Text>
                 )}
               </TouchableOpacity>
               <View style={{ height: 32 }} />
@@ -478,7 +564,7 @@ const styles = StyleSheet.create({
     width: 170,
     height: 170,
     borderRadius: Radius.full,
-    backgroundColor: Colors.primaryRing,   // rgba 0.08
+    backgroundColor: Colors.primaryRing,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -486,7 +572,7 @@ const styles = StyleSheet.create({
     width: 138,
     height: 138,
     borderRadius: Radius.full,
-    backgroundColor: Colors.primaryLight,  // rgba 0.15
+    backgroundColor: Colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -533,7 +619,7 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
 
-  // ── Birthday list (bottom half) ─────────────────────────────────────────────
+  // ── Event list (bottom half) ─────────────────────────────────────────────────
   listSection: {
     flex: 1,
     paddingHorizontal: Spacing.xl,
@@ -544,7 +630,35 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1.2,
+    marginBottom: Spacing.sm,
+  },
+  filterScroll: {
     marginBottom: Spacing.md,
+    flexGrow: 0,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    gap: Spacing.xs,
+  },
+  filterTab: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.surfaceHigh,
+  },
+  filterTabActive: {
+    backgroundColor: Colors.primaryLight,
+    borderColor: Colors.primary,
+  },
+  filterTabText: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    fontWeight: '500',
+  },
+  filterTabTextActive: {
+    color: Colors.textPrimary,
   },
   listContent: {
     paddingBottom: Spacing.xxl,
@@ -564,11 +678,14 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: Spacing.md,
   },
   cardDeleting: {
     backgroundColor: '#3D0A0A',
     borderColor: '#E24B4A',
+  },
+  cardEmoji: {
+    fontSize: 22,
   },
   daysText: {
     color: Colors.primary,
@@ -620,7 +737,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: Radius.xl,
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.md,
-    maxHeight: '85%',
+    maxHeight: '90%',
     borderWidth: 1,
     borderColor: Colors.surfaceHigh,
     borderBottomWidth: 0,
@@ -633,10 +750,45 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: Spacing.lg,
   },
-  sheetTitle: {
-    ...Typography.h2,
+
+  // ── Category header in sheet ─────────────────────────────────────────────────
+  categoryHeader: {
+    alignItems: 'center',
     marginBottom: Spacing.lg,
+    gap: Spacing.md,
   },
+  categoryEmoji: {
+    fontSize: 48,
+  },
+  categoryPills: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+    justifyContent: 'center',
+  },
+  categoryPill: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.surfaceHigh,
+    borderWidth: 1,
+    borderColor: Colors.textMuted,
+  },
+  categoryPillActive: {
+    backgroundColor: Colors.primaryLight,
+    borderColor: Colors.primary,
+  },
+  categoryPillText: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    fontWeight: '500',
+  },
+  categoryPillTextActive: {
+    color: Colors.textPrimary,
+    fontWeight: '600',
+  },
+
+  // ── Form fields ──────────────────────────────────────────────────────────────
   formField: {
     marginBottom: Spacing.md,
   },

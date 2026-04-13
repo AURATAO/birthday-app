@@ -89,6 +89,8 @@ export interface UpcomingEvent {
   relationship: string;
   birthday: string;
   event_type: string;
+  emoji: string;
+  title: string;
   days_until: number;
   remind_days: number;
 }
@@ -99,15 +101,20 @@ export interface EventDetail {
   relationship: string;
   birthday: string; // YYYY-MM-DD
   event_type: string;
+  emoji: string;
   remind_days: number;
 }
 
 export interface ParsedPerson {
   name: string;
-  birthday: string;
+  date: string;
   relationship: string;
   notes: string;
   language: string;
+  category: 'birthday' | 'milestone' | 'anniversary' | 'hard_date';
+  emoji: string;
+  recurring: boolean;
+  title: string;
 }
 
 export interface CreatePersonBody {
@@ -129,4 +136,7 @@ export interface CreateEventBody {
   person_id: string;
   event_date: string;
   type?: string;
+  title?: string;
+  emoji?: string;
+  recurring?: boolean;
 }

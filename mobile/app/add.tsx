@@ -38,6 +38,10 @@ export default function AddScreen() {
   const [relationship, setRelationship] = useState('');
   const [notes, setNotes] = useState('');
   const [phone, setPhone] = useState('');
+  const [category, setCategory] = useState('birthday');
+  const [emoji, setEmoji] = useState('🎂');
+  const [recurring, setRecurring] = useState(true);
+  const [title, setTitle] = useState('');
 
   const transcriptRef = useRef('');
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -109,9 +113,13 @@ export default function AddScreen() {
     try {
       const parsed = await parseVoice(text);
       if (parsed.name) setName(parsed.name);
-      if (parsed.birthday) setBirthday(parsed.birthday);
+      if (parsed.date) setBirthday(parsed.date);
       if (parsed.relationship) setRelationship(parsed.relationship);
       if (parsed.notes) setNotes(parsed.notes);
+      if (parsed.category) setCategory(parsed.category);
+      if (parsed.emoji) setEmoji(parsed.emoji);
+      setRecurring(parsed.recurring ?? true);
+      if (parsed.title) setTitle(parsed.title);
       setStep('form');
     } catch (err: any) {
       Alert.alert('Parse error', err.message);
@@ -140,7 +148,10 @@ export default function AddScreen() {
       await createEvent({
         person_id: personId,
         event_date: birthday.trim(),
-        type: 'birthday',
+        type: category,
+        title: title.trim() || undefined,
+        emoji,
+        recurring,
       });
       router.back();
     } catch (err: any) {
