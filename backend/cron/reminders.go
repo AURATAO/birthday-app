@@ -22,8 +22,10 @@ type expoPushMessage struct {
 }
 
 type reminderRow struct {
-	eventID   string
+	eventID    string
 	personName string
+	eventType  string
+	emoji      string
 	pushToken  string
 }
 
@@ -31,50 +33,40 @@ type reminderRow struct {
 func StartReminderCron() {
 	c := cron.New()
 
-	// Tomorrow-reminder: runs every day at 09:00
-	c.AddFunc("0 9 * * *", func() {
-		runReminders(1, "tomorrow")
-	})
+	// Tomorrow reminder — runs every day at 09:00
+	c.AddFunc("0 9 * * *", runTomorrowReminders)
 
-	// Same-day reminder: runs every day at 09:00 — same schedule, different offset
-	// We use two separate entries so each can be tweaked independently later.
-	c.AddFunc("0 9 * * *", func() {
-		runReminders(0, "today")
-	})
+	// Today reminder — runs every day at 09:00
+	c.AddFunc("0 9 * * *", runTodayReminders)
 
 	c.Start()
 	log.Println("Reminder cron started")
 }
 
-// runReminders queries events whose month/day matches today+offsetDays, then
-// sends a push notification to the event owner for each match.
-func runReminders(offsetDays int, label string) {
-	target := time.Now().AddDate(0, 0, offsetDays)
-	month := int(target.Month())
-	day := target.Day()
-
-	log.Printf("[reminders] checking %s (month=%d day=%d)", label, month, day)
+// runTomorrowReminders notifies users about events happening tomorrow.
+func runTomorrowReminders() {
+	log.Println("[reminders] checking tomorrow's events")
 
 	rows, err := handlers.DB.Query(context.Background(), `
-		SELECT e.id, p.name, pt.token
+		SELECT p.name, e.id AS event_id, e.type, e.emoji, pt.token
 		FROM events e
-		JOIN people p  ON p.id  = e.person_id
+		JOIN people p      ON p.id       = e.person_id
 		JOIN push_tokens pt ON pt.user_id = e.user_id
-		WHERE EXTRACT(MONTH FROM e.event_date)::int = $1
-		  AND EXTRACT(DAY   FROM e.event_date)::int = $2
+		WHERE e.event_date = CURRENT_DATE + INTERVAL '1 day'
+		  AND e.recurring  = true
 		  AND p.deleted_at IS NULL
-	`, month, day)
+	`)
 	if err != nil {
-		log.Printf("[reminders] query error: %v", err)
+		log.Printf("[reminders] tomorrow query error: %v", err)
 		return
 	}
 	defer rows.Close()
 
-	var reminders []reminderRow
-	seen := map[string]bool{} // deduplicate (event_id, token) pairs
+	var messages []expoPushMessage
+	seen := map[string]bool{}
 	for rows.Next() {
 		var r reminderRow
-		if err := rows.Scan(&r.eventID, &r.personName, &r.pushToken); err != nil {
+		if err := rows.Scan(&r.personName, &r.eventID, &r.eventType, &r.emoji, &r.pushToken); err != nil {
 			log.Printf("[reminders] scan error: %v", err)
 			continue
 		}
@@ -83,39 +75,89 @@ func runReminders(offsetDays int, label string) {
 			continue
 		}
 		seen[key] = true
-		reminders = append(reminders, r)
-	}
 
-	if len(reminders) == 0 {
-		log.Printf("[reminders] no %s reminders to send", label)
-		return
-	}
-
-	var messages []expoPushMessage
-	for _, r := range reminders {
-		var title, body string
-		if offsetDays == 0 {
-			title = fmt.Sprintf("Today is %s's birthday! 🎉", r.personName)
-			body = "Have you sent them a card yet?"
-		} else {
-			title = fmt.Sprintf("Tomorrow is %s's birthday! 🎂", r.personName)
-			body = "Tap to create a personal card for them"
-		}
 		messages = append(messages, expoPushMessage{
 			To:    r.pushToken,
-			Title: title,
-			Body:  body,
+			Title: fmt.Sprintf("%s Tomorrow is %s's %s!", r.emoji, r.personName, r.eventType),
+			Body:  "Tap to create a personal message",
 			Data: map[string]any{
-				"event_id": r.eventID,
 				"screen":   "card",
+				"event_id": r.eventID,
 			},
 		})
+	}
+
+	if len(messages) == 0 {
+		log.Println("[reminders] no tomorrow reminders to send")
+		return
 	}
 
 	if err := sendExpoPush(messages); err != nil {
 		log.Printf("[reminders] push error: %v", err)
 	} else {
-		log.Printf("[reminders] sent %d %s notification(s)", len(messages), label)
+		log.Printf("[reminders] sent %d tomorrow notification(s)", len(messages))
+	}
+}
+
+// runTodayReminders notifies users about today's events where no card has been sent yet.
+func runTodayReminders() {
+	log.Println("[reminders] checking today's events")
+
+	rows, err := handlers.DB.Query(context.Background(), `
+		SELECT p.name, e.id AS event_id, e.type, e.emoji, pt.token
+		FROM events e
+		JOIN people p      ON p.id       = e.person_id
+		JOIN push_tokens pt ON pt.user_id = e.user_id
+		WHERE e.event_date = CURRENT_DATE
+		  AND e.recurring  = true
+		  AND p.deleted_at IS NULL
+		  AND NOT EXISTS (
+		      SELECT 1 FROM cards c
+		      WHERE c.event_id  = e.id
+		        AND c.status    = 'sent'
+		        AND c.created_at::date = CURRENT_DATE
+		  )
+	`)
+	if err != nil {
+		log.Printf("[reminders] today query error: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	var messages []expoPushMessage
+	seen := map[string]bool{}
+	for rows.Next() {
+		var r reminderRow
+		if err := rows.Scan(&r.personName, &r.eventID, &r.eventType, &r.emoji, &r.pushToken); err != nil {
+			log.Printf("[reminders] scan error: %v", err)
+			continue
+		}
+		key := r.eventID + "|" + r.pushToken
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+
+		messages = append(messages, expoPushMessage{
+			To:    r.pushToken,
+			Title: fmt.Sprintf("%s Today is %s's special day!", r.emoji, r.personName),
+			Body:  "Have you sent them a message yet?",
+			Data: map[string]any{
+				"screen":   "card",
+				"event_id": r.eventID,
+			},
+		})
+	}
+
+	if len(messages) == 0 {
+		log.Println("[reminders] no today reminders to send")
+		return
+	}
+
+	if err := sendExpoPush(messages); err != nil {
+		log.Printf("[reminders] push error: %v", err)
+	} else {
+		log.Printf("[reminders] sent %d today notification(s)", len(messages))
 	}
 }
 

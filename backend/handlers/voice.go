@@ -84,8 +84,8 @@ Extract and return ONLY raw JSON, no markdown, no explanation:
 {
   "name": "person's name",
   "date": "date in YYYY-MM-DD format",
-  "relationship": "relationship in same language as transcript",
-  "notes": "any details in same language as transcript",
+  "relationship": "short relationship label in same language e.g. best friend, mom, colleague",
+  "notes": "everything personal about them — relationship context, shared memories, personality traits, things they like. Write as a concise comma-separated summary in the same language as the transcript. Example: best friend, travelled to Barcelona together, loves red wine",
   "language": "detected language code e.g. zh-TW, en, it, fr, ja",
   "category": "birthday|milestone|anniversary|hard_date",
   "emoji": "single emoji character",

@@ -23,6 +23,7 @@ type UpcomingEvent struct {
 	PersonID     string `json:"person_id"`
 	Name         string `json:"name"`
 	Relationship string `json:"relationship"`
+	Phone        string `json:"phone"`
 	Birthday     string `json:"birthday"` // event_date, named for frontend compatibility
 	EventType    string `json:"event_type"`
 	Emoji        string `json:"emoji"`
@@ -107,12 +108,12 @@ func GetEvent(c *gin.Context) {
 	var ev UpcomingEvent
 	var eventDate time.Time
 	err := DB.QueryRow(context.Background(),
-		`SELECT e.id, p.name, p.relationship, e.event_date, e.type, e.remind_days, COALESCE(e.emoji, '') AS emoji
+		`SELECT e.id, p.name, p.relationship, COALESCE(p.phone, ''), e.event_date, e.type, e.remind_days, COALESCE(e.emoji, '') AS emoji
 		 FROM events e
 		 JOIN people p ON p.id = e.person_id
 		 WHERE e.id = $1`,
 		id,
-	).Scan(&ev.ID, &ev.Name, &ev.Relationship, &eventDate, &ev.EventType, &ev.RemindDays, &ev.Emoji)
+	).Scan(&ev.ID, &ev.Name, &ev.Relationship, &ev.Phone, &eventDate, &ev.EventType, &ev.RemindDays, &ev.Emoji)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "event not found"})
 		return
