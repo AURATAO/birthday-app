@@ -47,6 +47,7 @@ export default function CardScreen() {
   const router = useRouter();
 
   const [personName, setPersonName] = useState('');
+  const [personPhone, setPersonPhone] = useState('');
   const [daysUntil, setDaysUntil] = useState(0);
   const [eventType, setEventType] = useState('birthday');
   const [loadingEvent, setLoadingEvent] = useState(true);
@@ -69,6 +70,7 @@ export default function CardScreen() {
     getEvent(id)
       .then((ev) => {
         setPersonName(ev.name);
+        setPersonPhone(ev.phone ?? '');
         setDaysUntil(daysUntilBirthday(ev.birthday));
         setEventType(ev.event_type ?? 'birthday');
       })
@@ -163,9 +165,14 @@ export default function CardScreen() {
     sendCard(cardId, channel).catch(() => {});
 
     const msg = encodeURIComponent(message);
+    const ph = encodeURIComponent(personPhone.replace(/\s/g, ''));
     const urls: Record<string, string> = {
-      whatsapp: `whatsapp://send?text=${msg}`,
-      imessage: `sms:&body=${msg}`,
+      whatsapp: personPhone
+        ? `whatsapp://send?phone=${ph}&text=${msg}`
+        : `whatsapp://send?text=${msg}`,
+      imessage: personPhone
+        ? `sms:${ph}&body=${msg}`
+        : `sms:&body=${msg}`,
       email: `mailto:?subject=${encodeURIComponent('Happy Birthday!')}&body=${msg}`,
     };
     Linking.openURL(urls[channel]).catch(() =>

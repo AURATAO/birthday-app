@@ -99,6 +99,7 @@ export interface EventDetail {
   id: string;
   name: string;
   relationship: string;
+  phone: string;
   birthday: string; // YYYY-MM-DD
   event_type: string;
   emoji: string;

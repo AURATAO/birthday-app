@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
+  FlatList,
   ActivityIndicator,
   Alert,
   Platform,
@@ -18,11 +19,18 @@ import {
   ExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent,
 } from 'expo-speech-recognition';
+import * as Contacts from 'expo-contacts';
 import { parseVoice, createPerson, createEvent } from '../lib/api';
 import { getLanguage } from '../lib/storage';
 import { Colors, Spacing, Radius, Typography } from '../constants/theme';
 
-type Step = 'mic' | 'form';
+type Step = 'mic' | 'contacts' | 'confirm';
+
+interface ContactMatch {
+  id: string;
+  name: string;
+  phone: string;
+}
 
 export default function AddScreen() {
   const router = useRouter();
@@ -35,13 +43,17 @@ export default function AddScreen() {
 
   const [name, setName] = useState('');
   const [birthday, setBirthday] = useState('');
-  const [relationship, setRelationship] = useState('');
   const [notes, setNotes] = useState('');
   const [phone, setPhone] = useState('');
   const [category, setCategory] = useState('birthday');
   const [emoji, setEmoji] = useState('🎂');
   const [recurring, setRecurring] = useState(true);
   const [title, setTitle] = useState('');
+  const [language, setLanguage] = useState('');
+
+  const [contactMatches, setContactMatches] = useState<ContactMatch[]>([]);
+  const [selectedContact, setSelectedContact] = useState<ContactMatch | null>(null);
+  const [manualPhone, setManualPhone] = useState('');
 
   const transcriptRef = useRef('');
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -114,18 +126,58 @@ export default function AddScreen() {
       const parsed = await parseVoice(text);
       if (parsed.name) setName(parsed.name);
       if (parsed.date) setBirthday(parsed.date);
-      if (parsed.relationship) setRelationship(parsed.relationship);
-      if (parsed.notes) setNotes(parsed.notes);
+      // Combine relationship + notes into a single personal note
+      const combined = [parsed.relationship, parsed.notes].filter(Boolean).join(', ');
+      setNotes(combined);
       if (parsed.category) setCategory(parsed.category);
       if (parsed.emoji) setEmoji(parsed.emoji);
       setRecurring(parsed.recurring ?? true);
       if (parsed.title) setTitle(parsed.title);
-      setStep('form');
+      if (parsed.language) setLanguage(parsed.language);
+
+      await searchContacts(parsed.name ?? '');
     } catch (err: any) {
       Alert.alert('Parse error', err.message);
     } finally {
       setParsing(false);
     }
+  }
+
+  async function searchContacts(personName: string) {
+    try {
+      const { status } = await Contacts.requestPermissionsAsync();
+      if (status !== 'granted' || !personName.trim()) {
+        setContactMatches([]);
+        setStep('contacts');
+        return;
+      }
+      const { data } = await Contacts.getContactsAsync({
+        fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Name],
+        name: personName,
+      });
+      const matches: ContactMatch[] = data
+        .filter(c => c.phoneNumbers && c.phoneNumbers.length > 0)
+        .map(c => ({
+          id: c.id ?? '',
+          name: c.name ?? '',
+          phone: c.phoneNumbers![0].number ?? '',
+        }));
+      setContactMatches(matches);
+    } catch {
+      setContactMatches([]);
+    }
+    setStep('contacts');
+  }
+
+  function selectContact(contact: ContactMatch) {
+    setSelectedContact(contact);
+    setPhone(contact.phone);
+    setStep('confirm');
+  }
+
+  function clearContact() {
+    setSelectedContact(null);
+    setPhone('');
   }
 
   async function handleSave() {
@@ -134,16 +186,17 @@ export default function AddScreen() {
       return;
     }
     if (!birthday.trim()) {
-      Alert.alert('Required', 'Please enter a birthday date (YYYY-MM-DD).');
+      Alert.alert('Required', 'Please enter a date (YYYY-MM-DD).');
       return;
     }
     setSaving(true);
     try {
+      const finalPhone = (selectedContact?.phone || manualPhone || phone).trim();
       const { id: personId } = await createPerson({
         name: name.trim(),
-        relationship: relationship.trim(),
         notes: notes.trim(),
-        phone: phone.trim(),
+        phone: finalPhone || undefined,
+        language: language || undefined,
       });
       await createEvent({
         person_id: personId,
@@ -195,7 +248,7 @@ export default function AddScreen() {
               <Text style={styles.micScreenHint}>
                 {isListening
                   ? 'Listening… tap to stop'
-                  : 'Say something like\n"Sarah\'s birthday is June 12th, she\'s my best friend"'}
+                  : 'Say something like\n"Aura\'s birthday is May 3rd, she\'s my best friend and loves red wine"'}
               </Text>
 
               {transcript ? (
@@ -210,7 +263,79 @@ export default function AddScreen() {
     );
   }
 
-  // ── Step: form ─────────────────────────────────────────────────────────────
+  // ── Step: contacts ─────────────────────────────────────────────────────────
+  if (step === 'contacts') {
+    return (
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <StatusBar style="light" />
+
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => setStep('mic')} style={styles.backBtn}>
+            <Text style={styles.backIcon}>←</Text>
+          </TouchableOpacity>
+          <Text style={styles.title}>Link Contact</Text>
+        </View>
+
+        {contactMatches.length > 0 ? (
+          <>
+            <Text style={styles.contactsHint}>Matching contacts for "{name}"</Text>
+            <FlatList
+              data={contactMatches}
+              keyExtractor={item => item.id + item.phone}
+              contentContainerStyle={styles.contactsList}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.contactRow}
+                  onPress={() => selectContact(item)}
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.contactAvatar}>
+                    <Text style={styles.contactAvatarText}>
+                      {item.name.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={styles.contactInfo}>
+                    <Text style={styles.contactName}>{item.name}</Text>
+                    <Text style={styles.contactPhone}>{item.phone}</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+            />
+          </>
+        ) : (
+          <View style={styles.noMatchBox}>
+            <Text style={styles.noMatchText}>No contacts found for "{name}"</Text>
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>Phone number (optional)</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="+1 555 000 0000"
+                placeholderTextColor={Colors.textMuted}
+                value={manualPhone}
+                onChangeText={setManualPhone}
+                keyboardType="phone-pad"
+              />
+            </View>
+          </View>
+        )}
+
+        <View style={styles.contactsFooter}>
+          <TouchableOpacity
+            style={styles.skipBtn}
+            onPress={() => setStep('confirm')}
+            activeOpacity={0.75}
+          >
+            <Text style={styles.skipText}>Skip</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    );
+  }
+
+  // ── Step: confirm ──────────────────────────────────────────────────────────
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -219,7 +344,7 @@ export default function AddScreen() {
       <StatusBar style="light" />
 
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => setStep('mic')} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => setStep('contacts')} style={styles.backBtn}>
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
         <Text style={styles.title}>Confirm Details</Text>
@@ -243,7 +368,7 @@ export default function AddScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Birthday *</Text>
+          <Text style={styles.sectionLabel}>Date *</Text>
           <TextInput
             style={styles.input}
             placeholder="YYYY-MM-DD"
@@ -255,33 +380,10 @@ export default function AddScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Relationship</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="e.g. Mom, Best friend, Partner"
-            placeholderTextColor={Colors.textMuted}
-            value={relationship}
-            onChangeText={setRelationship}
-          />
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Phone</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="+1 555 000 0000"
-            placeholderTextColor={Colors.textMuted}
-            value={phone}
-            onChangeText={setPhone}
-            keyboardType="phone-pad"
-          />
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Notes</Text>
+          <Text style={styles.sectionLabel}>Note</Text>
           <TextInput
             style={[styles.input, styles.inputMultiline]}
-            placeholder="Anything special to remember about them..."
+            placeholder="Anything personal to remember about them…"
             placeholderTextColor={Colors.textMuted}
             value={notes}
             onChangeText={setNotes}
@@ -289,6 +391,38 @@ export default function AddScreen() {
             textAlignVertical="top"
           />
         </View>
+
+        {selectedContact ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Contact</Text>
+            <View style={styles.selectedContactRow}>
+              <View style={styles.contactAvatar}>
+                <Text style={styles.contactAvatarText}>
+                  {selectedContact.name.charAt(0).toUpperCase()}
+                </Text>
+              </View>
+              <View style={styles.contactInfo}>
+                <Text style={styles.contactName}>{selectedContact.name}</Text>
+                <Text style={styles.contactPhone}>{selectedContact.phone}</Text>
+              </View>
+              <TouchableOpacity onPress={clearContact} style={styles.clearBtn}>
+                <Text style={styles.clearBtnText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Phone (optional)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="+1 555 000 0000"
+              placeholderTextColor={Colors.textMuted}
+              value={phone}
+              onChangeText={setPhone}
+              keyboardType="phone-pad"
+            />
+          </View>
+        )}
 
         <TouchableOpacity
           style={[styles.saveBtn, saving && styles.btnDisabled]}
@@ -299,7 +433,7 @@ export default function AddScreen() {
           {saving ? (
             <ActivityIndicator color={Colors.textPrimary} />
           ) : (
-            <Text style={styles.saveBtnText}>Save Birthday</Text>
+            <Text style={styles.saveBtnText}>Save</Text>
           )}
         </TouchableOpacity>
       </ScrollView>
@@ -383,7 +517,83 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     textAlign: 'center',
   },
-  // ── Form ────────────────────────────────────────────────────────────────────
+  // ── Contacts screen ─────────────────────────────────────────────────────────
+  contactsHint: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    paddingHorizontal: Spacing.xl,
+    marginBottom: Spacing.sm,
+  },
+  contactsList: {
+    paddingHorizontal: Spacing.xl,
+    gap: Spacing.sm,
+  },
+  contactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 13,
+    borderWidth: 1,
+    borderColor: Colors.surfaceHigh,
+  },
+  contactAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  contactAvatarText: {
+    color: Colors.textPrimary,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  contactInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  contactName: {
+    color: Colors.textPrimary,
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  contactPhone: {
+    color: Colors.textSecondary,
+    fontSize: 13,
+  },
+  noMatchBox: {
+    flex: 1,
+    paddingHorizontal: Spacing.xl,
+    gap: Spacing.lg,
+  },
+  noMatchText: {
+    fontSize: 15,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginTop: Spacing.xl,
+  },
+  contactsFooter: {
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: 40,
+    paddingTop: Spacing.lg,
+  },
+  skipBtn: {
+    borderRadius: Radius.md,
+    paddingVertical: Spacing.lg,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.surfaceHigh,
+  },
+  skipText: {
+    color: Colors.textSecondary,
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  // ── Confirm screen ──────────────────────────────────────────────────────────
   scroll: {
     paddingHorizontal: Spacing.xl,
     paddingBottom: 52,
@@ -412,6 +622,24 @@ const styles = StyleSheet.create({
   inputMultiline: {
     minHeight: 88,
     paddingTop: 13,
+  },
+  selectedContactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 13,
+    borderWidth: 1,
+    borderColor: Colors.surfaceHigh,
+  },
+  clearBtn: {
+    padding: Spacing.xs,
+  },
+  clearBtnText: {
+    color: Colors.textMuted,
+    fontSize: 16,
   },
   saveBtn: {
     backgroundColor: Colors.primary,

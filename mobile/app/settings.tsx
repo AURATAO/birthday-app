@@ -124,6 +124,18 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* DEBUG: Copy Token */}
+        <TouchableOpacity
+          style={styles.logoutBtn}
+          onPress={async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            console.log('MY TOKEN:', session?.access_token);
+          }}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.logoutText}>Copy Token</Text>
+        </TouchableOpacity>
+
         {/* Logout */}
         <TouchableOpacity
           style={[styles.logoutBtn, loggingOut && styles.logoutBtnDisabled]}

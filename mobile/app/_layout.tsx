@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Platform } from 'react-native';
 import { Slot, useRouter, useSegments } from 'expo-router';
 import * as Notifications from 'expo-notifications';
+import * as Contacts from 'expo-contacts';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { Session } from '@supabase/supabase-js';
@@ -100,6 +101,8 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (!session) return;
+
+    Contacts.requestPermissionsAsync().catch(() => {});
 
     registerForPushNotifications().then(async (token) => {
       if (!token) return;
