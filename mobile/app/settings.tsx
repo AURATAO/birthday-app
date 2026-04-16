@@ -7,6 +7,7 @@ import {
   Alert,
   Platform,
   Switch,
+  Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -123,6 +124,15 @@ export default function SettingsScreen() {
             </View>
           </View>
         </View>
+
+        {/* Privacy Policy */}
+        <TouchableOpacity
+          onPress={() => Linking.openURL('https://birthday-app-rouge-iota.vercel.app/privacy')}
+          activeOpacity={0.7}
+          style={styles.privacyBtn}
+        >
+          <Text style={styles.privacyText}>{isChinese ? '隐私政策' : 'Privacy Policy'}</Text>
+        </TouchableOpacity>
 
         {/* DEBUG: Copy Token */}
         <TouchableOpacity
@@ -255,6 +265,15 @@ const styles = StyleSheet.create({
   deleteText: {
     color: Colors.textMuted,
     fontSize: 13,
+    fontWeight: '500',
+  },
+  privacyBtn: {
+    alignItems: 'center',
+    paddingVertical: Spacing.sm,
+  },
+  privacyText: {
+    color: Colors.primary,
+    fontSize: 14,
     fontWeight: '500',
   },
 });
