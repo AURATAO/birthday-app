@@ -53,7 +53,6 @@ export default function AddScreen() {
 
   const [contactMatches, setContactMatches] = useState<ContactMatch[]>([]);
   const [selectedContact, setSelectedContact] = useState<ContactMatch | null>(null);
-  const [manualPhone, setManualPhone] = useState('');
 
   const transcriptRef = useRef('');
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -191,7 +190,7 @@ export default function AddScreen() {
     }
     setSaving(true);
     try {
-      const finalPhone = (selectedContact?.phone || manualPhone || phone).trim();
+      const finalPhone = (selectedContact?.phone || phone).trim();
       const { id: personId } = await createPerson({
         name: name.trim(),
         notes: notes.trim(),
@@ -314,8 +313,8 @@ export default function AddScreen() {
                 style={styles.input}
                 placeholder="+1 555 000 0000"
                 placeholderTextColor={Colors.textMuted}
-                value={manualPhone}
-                onChangeText={setManualPhone}
+                value={phone}
+                onChangeText={setPhone}
                 keyboardType="phone-pad"
               />
             </View>
