@@ -12,7 +12,9 @@ import {
   Platform,
   KeyboardAvoidingView,
   Animated,
+  Modal,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
@@ -24,7 +26,7 @@ import { parseVoice, createPerson, createEvent } from '../lib/api';
 import { getLanguage } from '../lib/storage';
 import { Colors, Spacing, Radius, Typography } from '../constants/theme';
 
-type Step = 'mic' | 'contacts' | 'confirm';
+type Step = 'mic' | 'confirm';
 
 interface ContactMatch {
   id: string;
@@ -51,8 +53,13 @@ export default function AddScreen() {
   const [title, setTitle] = useState('');
   const [language, setLanguage] = useState('');
 
-  const [contactMatches, setContactMatches] = useState<ContactMatch[]>([]);
   const [selectedContact, setSelectedContact] = useState<ContactMatch | null>(null);
+
+  // Contact picker modal
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const [allContacts, setAllContacts] = useState<ContactMatch[]>([]);
+  const [contactSearch, setContactSearch] = useState('');
+  const [loadingContacts, setLoadingContacts] = useState(false);
 
   const transcriptRef = useRef('');
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -125,7 +132,6 @@ export default function AddScreen() {
       const parsed = await parseVoice(text);
       if (parsed.name) setName(parsed.name);
       if (parsed.date) setBirthday(parsed.date);
-      // Combine relationship + notes into a single personal note
       const combined = [parsed.relationship, parsed.notes].filter(Boolean).join(', ');
       setNotes(combined);
       if (parsed.category) setCategory(parsed.category);
@@ -133,8 +139,7 @@ export default function AddScreen() {
       setRecurring(parsed.recurring ?? true);
       if (parsed.title) setTitle(parsed.title);
       if (parsed.language) setLanguage(parsed.language);
-
-      await searchContacts(parsed.name ?? '');
+      setStep('confirm');
     } catch (err: any) {
       Alert.alert('Parse error', err.message);
     } finally {
@@ -142,36 +147,44 @@ export default function AddScreen() {
     }
   }
 
-  async function searchContacts(personName: string) {
+  async function openContactPicker() {
+    setContactSearch('');
+    setPickerVisible(true);
+
+    if (allContacts.length > 0) return; // already loaded
+
+    setLoadingContacts(true);
     try {
       const { status } = await Contacts.requestPermissionsAsync();
-      if (status !== 'granted' || !personName.trim()) {
-        setContactMatches([]);
-        setStep('contacts');
+      if (status !== 'granted') {
+        setPickerVisible(false);
+        Alert.alert('Permission required', 'Contacts access is needed to link a contact.');
         return;
       }
       const { data } = await Contacts.getContactsAsync({
-        fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Name],
-        name: personName,
+        fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers],
       });
-      const matches: ContactMatch[] = data
+      const mapped: ContactMatch[] = data
         .filter(c => c.phoneNumbers && c.phoneNumbers.length > 0)
         .map(c => ({
           id: c.id ?? '',
           name: c.name ?? '',
           phone: c.phoneNumbers![0].number ?? '',
-        }));
-      setContactMatches(matches);
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      setAllContacts(mapped);
     } catch {
-      setContactMatches([]);
+      Alert.alert('Error', 'Could not load contacts.');
+      setPickerVisible(false);
+    } finally {
+      setLoadingContacts(false);
     }
-    setStep('contacts');
   }
 
   function selectContact(contact: ContactMatch) {
     setSelectedContact(contact);
     setPhone(contact.phone);
-    setStep('confirm');
+    setPickerVisible(false);
   }
 
   function clearContact() {
@@ -212,6 +225,13 @@ export default function AddScreen() {
       setSaving(false);
     }
   }
+
+  const filteredContacts = contactSearch.trim()
+    ? allContacts.filter(c =>
+        c.name.toLowerCase().includes(contactSearch.toLowerCase()) ||
+        c.phone.includes(contactSearch)
+      )
+    : allContacts;
 
   // ── Step: mic ──────────────────────────────────────────────────────────────
   if (step === 'mic') {
@@ -262,78 +282,6 @@ export default function AddScreen() {
     );
   }
 
-  // ── Step: contacts ─────────────────────────────────────────────────────────
-  if (step === 'contacts') {
-    return (
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <StatusBar style="light" />
-
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => setStep('mic')} style={styles.backBtn}>
-            <Text style={styles.backIcon}>←</Text>
-          </TouchableOpacity>
-          <Text style={styles.title}>Link Contact</Text>
-        </View>
-
-        {contactMatches.length > 0 ? (
-          <>
-            <Text style={styles.contactsHint}>Matching contacts for "{name}"</Text>
-            <FlatList
-              data={contactMatches}
-              keyExtractor={item => item.id + item.phone}
-              contentContainerStyle={styles.contactsList}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.contactRow}
-                  onPress={() => selectContact(item)}
-                  activeOpacity={0.75}
-                >
-                  <View style={styles.contactAvatar}>
-                    <Text style={styles.contactAvatarText}>
-                      {item.name.charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
-                  <View style={styles.contactInfo}>
-                    <Text style={styles.contactName}>{item.name}</Text>
-                    <Text style={styles.contactPhone}>{item.phone}</Text>
-                  </View>
-                </TouchableOpacity>
-              )}
-            />
-          </>
-        ) : (
-          <View style={styles.noMatchBox}>
-            <Text style={styles.noMatchText}>No contacts found for "{name}"</Text>
-            <View style={styles.section}>
-              <Text style={styles.sectionLabel}>Phone number (optional)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="+1 555 000 0000"
-                placeholderTextColor={Colors.textMuted}
-                value={phone}
-                onChangeText={setPhone}
-                keyboardType="phone-pad"
-              />
-            </View>
-          </View>
-        )}
-
-        <View style={styles.contactsFooter}>
-          <TouchableOpacity
-            style={styles.skipBtn}
-            onPress={() => setStep('confirm')}
-            activeOpacity={0.75}
-          >
-            <Text style={styles.skipText}>Skip</Text>
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
-    );
-  }
-
   // ── Step: confirm ──────────────────────────────────────────────────────────
   return (
     <KeyboardAvoidingView
@@ -343,7 +291,7 @@ export default function AddScreen() {
       <StatusBar style="light" />
 
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => setStep('contacts')} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => setStep('mic')} style={styles.backBtn}>
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
         <Text style={styles.title}>Confirm Details</Text>
@@ -391,9 +339,10 @@ export default function AddScreen() {
           />
         </View>
 
-        {selectedContact ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Contact</Text>
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Phone (optional)</Text>
+
+          {selectedContact ? (
             <View style={styles.selectedContactRow}>
               <View style={styles.contactAvatar}>
                 <Text style={styles.contactAvatarText}>
@@ -408,20 +357,30 @@ export default function AddScreen() {
                 <Text style={styles.clearBtnText}>✕</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        ) : (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Phone (optional)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="+1 555 000 0000"
-              placeholderTextColor={Colors.textMuted}
-              value={phone}
-              onChangeText={setPhone}
-              keyboardType="phone-pad"
-            />
-          </View>
-        )}
+          ) : (
+            <>
+              <TouchableOpacity
+                style={styles.linkContactBtn}
+                onPress={openContactPicker}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.linkContactIcon}>👤</Text>
+                <Text style={styles.linkContactText}>Link to contact</Text>
+              </TouchableOpacity>
+
+              <Text style={styles.orDivider}>or enter manually</Text>
+
+              <TextInput
+                style={styles.input}
+                placeholder="+1 555 000 0000"
+                placeholderTextColor={Colors.textMuted}
+                value={phone}
+                onChangeText={setPhone}
+                keyboardType="phone-pad"
+              />
+            </>
+          )}
+        </View>
 
         <TouchableOpacity
           style={[styles.saveBtn, saving && styles.btnDisabled]}
@@ -436,6 +395,76 @@ export default function AddScreen() {
           )}
         </TouchableOpacity>
       </ScrollView>
+
+      {/* ── Contact picker modal ─────────────────────────────────────────────── */}
+      <Modal
+        visible={pickerVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setPickerVisible(false)}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Choose Contact</Text>
+            <TouchableOpacity
+              onPress={() => setPickerVisible(false)}
+              style={styles.modalCancelBtn}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.searchRow}>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search by name or number…"
+              placeholderTextColor={Colors.textMuted}
+              value={contactSearch}
+              onChangeText={setContactSearch}
+              autoCapitalize="none"
+              autoCorrect={false}
+              clearButtonMode="while-editing"
+            />
+          </View>
+
+          {loadingContacts ? (
+            <View style={styles.modalCenter}>
+              <ActivityIndicator color={Colors.primary} size="large" />
+              <Text style={styles.modalHint}>Loading contacts…</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={filteredContacts}
+              keyExtractor={item => item.id + item.phone}
+              contentContainerStyle={styles.pickerList}
+              keyboardShouldPersistTaps="handled"
+              ListEmptyComponent={
+                <Text style={styles.modalHint}>
+                  {contactSearch ? 'No contacts match your search.' : 'No contacts with phone numbers found.'}
+                </Text>
+              }
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.contactRow}
+                  onPress={() => selectContact(item)}
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.contactAvatar}>
+                    <Text style={styles.contactAvatarText}>
+                      {item.name.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={styles.contactInfo}>
+                    <Text style={styles.contactName}>{item.name}</Text>
+                    <Text style={styles.contactPhone}>{item.phone}</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+            />
+          )}
+        </SafeAreaView>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -516,15 +545,141 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     textAlign: 'center',
   },
-  // ── Contacts screen ─────────────────────────────────────────────────────────
-  contactsHint: {
-    fontSize: 13,
-    color: Colors.textSecondary,
+  // ── Confirm screen ──────────────────────────────────────────────────────────
+  scroll: {
     paddingHorizontal: Spacing.xl,
-    marginBottom: Spacing.sm,
+    paddingBottom: 52,
+    gap: Spacing.md,
   },
-  contactsList: {
+  section: {
+    gap: Spacing.xs,
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1.1,
+  },
+  input: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 13,
+    color: Colors.textPrimary,
+    fontSize: 15,
+    borderWidth: 1,
+    borderColor: Colors.surfaceHigh,
+  },
+  inputMultiline: {
+    minHeight: 88,
+    paddingTop: 13,
+  },
+  linkContactBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 13,
+    borderWidth: 1,
+    borderColor: Colors.surfaceHigh,
+  },
+  linkContactIcon: {
+    fontSize: 16,
+  },
+  linkContactText: {
+    color: Colors.textSecondary,
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  orDivider: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    marginVertical: Spacing.xs,
+  },
+  selectedContactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 13,
+    borderWidth: 1,
+    borderColor: Colors.surfaceHigh,
+  },
+  clearBtn: {
+    padding: Spacing.xs,
+  },
+  clearBtnText: {
+    color: Colors.textMuted,
+    fontSize: 16,
+  },
+  saveBtn: {
+    backgroundColor: Colors.primary,
+    borderRadius: Radius.md,
+    paddingVertical: Spacing.lg,
+    alignItems: 'center',
+    marginTop: Spacing.sm,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  saveBtnText: {
+    color: Colors.textPrimary,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  btnDisabled: {
+    opacity: 0.45,
+  },
+  // ── Contact picker modal ─────────────────────────────────────────────────────
+  modalContainer: {
+    flex: 1,
+    backgroundColor: Colors.background,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.surfaceHigh,
+  },
+  modalTitle: {
+    ...Typography.h2,
+    fontWeight: '600',
+  },
+  modalCancelBtn: {
+    padding: Spacing.xs,
+  },
+  modalCancelText: {
+    color: Colors.textSecondary,
+    fontSize: 15,
+  },
+  searchRow: {
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+  },
+  searchInput: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 11,
+    color: Colors.textPrimary,
+    fontSize: 15,
+    borderWidth: 1,
+    borderColor: Colors.surfaceHigh,
+  },
+  pickerList: {
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: 32,
     gap: Spacing.sm,
   },
   contactRow: {
@@ -564,100 +719,17 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     fontSize: 13,
   },
-  noMatchBox: {
+  modalCenter: {
     flex: 1,
-    paddingHorizontal: Spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: Spacing.lg,
   },
-  noMatchText: {
-    fontSize: 15,
+  modalHint: {
+    fontSize: 14,
     color: Colors.textSecondary,
     textAlign: 'center',
-    marginTop: Spacing.xl,
-  },
-  contactsFooter: {
+    paddingTop: Spacing.xl,
     paddingHorizontal: Spacing.xl,
-    paddingBottom: 40,
-    paddingTop: Spacing.lg,
-  },
-  skipBtn: {
-    borderRadius: Radius.md,
-    paddingVertical: Spacing.lg,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.surfaceHigh,
-  },
-  skipText: {
-    color: Colors.textSecondary,
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  // ── Confirm screen ──────────────────────────────────────────────────────────
-  scroll: {
-    paddingHorizontal: Spacing.xl,
-    paddingBottom: 52,
-    gap: Spacing.md,
-  },
-  section: {
-    gap: Spacing.xs,
-  },
-  sectionLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 1.1,
-  },
-  input: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.md,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: 13,
-    color: Colors.textPrimary,
-    fontSize: 15,
-    borderWidth: 1,
-    borderColor: Colors.surfaceHigh,
-  },
-  inputMultiline: {
-    minHeight: 88,
-    paddingTop: 13,
-  },
-  selectedContactRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.md,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: 13,
-    borderWidth: 1,
-    borderColor: Colors.surfaceHigh,
-  },
-  clearBtn: {
-    padding: Spacing.xs,
-  },
-  clearBtnText: {
-    color: Colors.textMuted,
-    fontSize: 16,
-  },
-  saveBtn: {
-    backgroundColor: Colors.primary,
-    borderRadius: Radius.md,
-    paddingVertical: Spacing.lg,
-    alignItems: 'center',
-    marginTop: Spacing.sm,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  saveBtnText: {
-    color: Colors.textPrimary,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  btnDisabled: {
-    opacity: 0.45,
   },
 });
