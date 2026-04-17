@@ -32,7 +32,9 @@ export async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl
   const isPublicPath =
-    pathname.startsWith('/login') || pathname.startsWith('/auth')
+    pathname.startsWith('/login') ||
+    pathname.startsWith('/auth') ||
+    pathname.startsWith('/privacy')
 
   if (!user && !isPublicPath) {
     const loginUrl = request.nextUrl.clone()
@@ -51,6 +53,6 @@ export const config = {
      * - _next/image (image optimization)
      * - favicon.ico, public assets
      */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|login|auth|privacy).*)',
   ],
 }
