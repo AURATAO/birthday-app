@@ -14,6 +14,15 @@ import { Colors, Spacing, Radius } from '../constants/theme';
 
 WebBrowser.maybeCompleteAuthSession();
 
+const PRIVACY_URL = 'https://birthday-app-rouge-iota.vercel.app/privacy';
+
+const openPrivacy = async () => {
+  await WebBrowser.openBrowserAsync(PRIVACY_URL, {
+    presentationStyle: WebBrowser.WebBrowserPresentationStyle.FORM_SHEET,
+    toolbarColor: '#0A0A0F',
+  });
+};
+
 export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
 
@@ -82,7 +91,10 @@ export default function LoginScreen() {
           )}
         </TouchableOpacity>
         <Text style={styles.legalText}>
-          By continuing you agree to our Terms & Privacy Policy
+          By continuing you agree to our{' '}
+          <Text onPress={openPrivacy} style={styles.legalLink}>
+            Privacy Policy
+          </Text>
         </Text>
       </View>
     </View>
@@ -164,5 +176,9 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.textMuted,
     textAlign: 'center',
+  },
+  legalLink: {
+    color: Colors.primary,
+    textDecorationLine: 'underline',
   },
 });

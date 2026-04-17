@@ -7,8 +7,8 @@ import {
   Alert,
   Platform,
   Switch,
-  Linking,
 } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { supabase } from '../lib/supabase';
@@ -21,6 +21,16 @@ export default function SettingsScreen() {
   const [isChinese, setIsChinese] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
+
+  const openPrivacy = async () => {
+    await WebBrowser.openBrowserAsync(
+      'https://birthday-app-rouge-iota.vercel.app/privacy',
+      {
+        presentationStyle: WebBrowser.WebBrowserPresentationStyle.FORM_SHEET,
+        toolbarColor: '#0A0A0F',
+      }
+    );
+  };
 
   async function handleDeleteAccount() {
     Alert.alert(
@@ -130,7 +140,7 @@ export default function SettingsScreen() {
           <Text style={styles.sectionLabel}>{isChinese ? '法律' : 'Legal'}</Text>
           <View style={styles.card}>
             <TouchableOpacity
-              onPress={() => Linking.openURL('https://birthday-app-rouge-iota.vercel.app/privacy')}
+              onPress={openPrivacy}
               activeOpacity={0.7}
               style={styles.row}
             >
