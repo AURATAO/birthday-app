@@ -126,13 +126,22 @@ export default function SettingsScreen() {
         </View>
 
         {/* Privacy Policy */}
-        <TouchableOpacity
-          onPress={() => Linking.openURL('https://birthday-app-rouge-iota.vercel.app/privacy')}
-          activeOpacity={0.7}
-          style={styles.privacyBtn}
-        >
-          <Text style={styles.privacyText}>{isChinese ? '隐私政策' : 'Privacy Policy'}</Text>
-        </TouchableOpacity>
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>{isChinese ? '法律' : 'Legal'}</Text>
+          <View style={styles.card}>
+            <TouchableOpacity
+              onPress={() => Linking.openURL('https://birthday-app-rouge-iota.vercel.app/privacy')}
+              activeOpacity={0.7}
+              style={styles.row}
+            >
+              <View>
+                <Text style={styles.rowLabel}>{isChinese ? '隐私政策' : 'Privacy Policy'}</Text>
+                <Text style={styles.rowSubLabel}>{isChinese ? '我们如何处理您的数据' : 'How we handle your data'}</Text>
+              </View>
+              <Text style={styles.rowChevron}>›</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
 
         {/* DEBUG: Copy Token */}
         <TouchableOpacity
@@ -267,13 +276,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
   },
-  privacyBtn: {
-    alignItems: 'center',
-    paddingVertical: Spacing.sm,
+  rowSubLabel: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 2,
   },
-  privacyText: {
-    color: Colors.primary,
-    fontSize: 14,
-    fontWeight: '500',
+  rowChevron: {
+    fontSize: 20,
+    color: Colors.textMuted,
   },
 });
