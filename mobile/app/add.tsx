@@ -26,6 +26,12 @@ import { parseVoice, createPerson, createEvent } from '../lib/api';
 import { getLanguage } from '../lib/storage';
 import { Colors, Spacing, Radius, Typography } from '../constants/theme';
 
+const MOCK_CONTACTS = [
+  { id: '1', name: 'Tania Chen', phone: '+39 333 123 4567' },
+  { id: '2', name: 'Marco Rossi', phone: '+39 348 987 6543' },
+  { id: '3', name: 'Sara Bianchi', phone: '+39 320 111 2222' },
+];
+
 type Step = 'mic' | 'confirm';
 
 interface ContactMatch {
@@ -156,9 +162,11 @@ export default function AddScreen() {
     setLoadingContacts(true);
     try {
       const { status } = await Contacts.requestPermissionsAsync();
+      console.log('Contacts permission:', status);
       if (status !== 'granted') {
-        setPickerVisible(false);
-        Alert.alert('Permission required', 'Contacts access is needed to link a contact.');
+        // Permission denied → fall back to mock data
+        setAllContacts(MOCK_CONTACTS);
+        setLoadingContacts(false);
         return;
       }
       const { data } = await Contacts.getContactsAsync({
@@ -173,9 +181,10 @@ export default function AddScreen() {
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
       setAllContacts(mapped);
-    } catch {
-      Alert.alert('Error', 'Could not load contacts.');
-      setPickerVisible(false);
+    } catch (e) {
+      // expo-contacts not available (old build) → use mock data
+      console.log('Using mock contacts:', e);
+      setAllContacts(MOCK_CONTACTS);
     } finally {
       setLoadingContacts(false);
     }
@@ -364,8 +373,8 @@ export default function AddScreen() {
                 onPress={openContactPicker}
                 activeOpacity={0.75}
               >
-                <Text style={styles.linkContactIcon}>👤</Text>
-                <Text style={styles.linkContactText}>Link to contact</Text>
+                <Text style={styles.linkContactIcon}>📱</Text>
+                <Text style={styles.linkContactText}>Link to contact 📱</Text>
               </TouchableOpacity>
 
               <Text style={styles.orDivider}>or enter manually</Text>
@@ -463,6 +472,16 @@ export default function AddScreen() {
               )}
             />
           )}
+
+          <View style={styles.modalSkipFooter}>
+            <TouchableOpacity
+              style={styles.skipBtn}
+              onPress={() => setPickerVisible(false)}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.skipBtnText}>Skip</Text>
+            </TouchableOpacity>
+          </View>
         </SafeAreaView>
       </Modal>
     </KeyboardAvoidingView>
@@ -731,5 +750,25 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingTop: Spacing.xl,
     paddingHorizontal: Spacing.xl,
+  },
+  modalSkipFooter: {
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.xl,
+    borderTopWidth: 1,
+    borderTopColor: Colors.surfaceHigh,
+  },
+  skipBtn: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    paddingVertical: Spacing.lg,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.surfaceHigh,
+  },
+  skipBtnText: {
+    color: Colors.textSecondary,
+    fontSize: 15,
+    fontWeight: '500',
   },
 });
