@@ -73,19 +73,24 @@ export default function AddScreen() {
 
   useSpeechRecognitionEvent('result', (event) => {
     const text = event.results[0]?.transcript ?? '';
+    console.log('Speech result:', text);
     transcriptRef.current = text;
     setTranscript(text);
   });
 
   useSpeechRecognitionEvent('end', () => {
+    console.log('Speech ended, transcript:', transcriptRef.current);
     setIsListening(false);
     stopPulse();
     if (transcriptRef.current.trim()) {
       autoParse(transcriptRef.current.trim());
+    } else {
+      console.log('Transcript is empty, not parsing');
     }
   });
 
   useSpeechRecognitionEvent('error', (event) => {
+    console.log('Speech error:', event.error, event.message);
     setIsListening(false);
     stopPulse();
     if (event.error !== 'no-speech') {
@@ -133,9 +138,12 @@ export default function AddScreen() {
   }
 
   async function autoParse(text: string) {
+    console.log('autoParse called');
     setParsing(true);
     try {
       const parsed = await parseVoice(text);
+      console.log('Parse success, setting confirmVisible to true');
+      console.log('Parsed data:', JSON.stringify(parsed));
       if (parsed.name) setName(parsed.name);
       if (parsed.date) setBirthday(parsed.date);
       const combined = [parsed.relationship, parsed.notes].filter(Boolean).join(', ');
@@ -292,6 +300,10 @@ export default function AddScreen() {
   }
 
   // ── Step: confirm ──────────────────────────────────────────────────────────
+  console.log('CONFIRM FORM RENDERING');
+  console.log('confirmVisible:', step === 'confirm');
+  console.log('contactsList length:', allContacts?.length);
+  console.log('showContactModal:', pickerVisible);
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -351,6 +363,7 @@ export default function AddScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Phone (optional)</Text>
 
+          {console.log('RENDERING LINK CONTACT BUTTON') as any}
           {selectedContact ? (
             <View style={styles.selectedContactRow}>
               <View style={styles.contactAvatar}>

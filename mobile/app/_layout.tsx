@@ -84,6 +84,7 @@ export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
   const [ready, setReady] = useState(false);
   const notificationListener = useRef<Notifications.EventSubscription | null>(null);
+  const registrationDone = useRef(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -101,6 +102,8 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (!session) return;
+    if (registrationDone.current) return;
+    registrationDone.current = true;
 
     Contacts.requestPermissionsAsync().catch(() => {});
 
