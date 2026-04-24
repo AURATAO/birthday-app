@@ -20,6 +20,7 @@ import {
   ExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent,
 } from 'expo-speech-recognition';
+import * as Contacts from 'expo-contacts';
 import { supabase } from '../lib/supabase';
 import {
   getUpcomingBirthdays,
@@ -41,6 +42,18 @@ const CATEGORY_CONFIG: { key: CategoryKey; emoji: string; label: string }[] = [
   { key: 'anniversary', emoji: '💍', label: 'Anniversary' },
   { key: 'hard_date',   emoji: '🕯️', label: 'Hard date' },
 ];
+
+const MOCK_CONTACTS = [
+  { id: '1', name: 'Tania Chen', phone: '+39 333 123 4567' },
+  { id: '2', name: 'Marco Rossi', phone: '+39 348 987 6543' },
+  { id: '3', name: 'Sara Bianchi', phone: '+39 320 111 2222' },
+];
+
+interface ContactMatch {
+  id: string;
+  name: string;
+  phone: string;
+}
 
 function defaultEmojiForCategory(cat: string): string {
   return CATEGORY_CONFIG.find(c => c.key === cat)?.emoji ?? '🎂';
@@ -80,7 +93,14 @@ export default function HomeScreen() {
   const [parsedTitle, setParsedTitle] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Animations — only active during recording
+  // Contact picker state
+  const [selectedContact, setSelectedContact] = useState<ContactMatch | null>(null);
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const [allContacts, setAllContacts] = useState<ContactMatch[]>([]);
+  const [contactSearch, setContactSearch] = useState('');
+  const [loadingContacts, setLoadingContacts] = useState(false);
+
+  // Animations
   const tapAnim = useRef(new Animated.Value(1)).current;
   const ring1Anim = useRef(new Animated.Value(1)).current;
   const ring2Anim = useRef(new Animated.Value(1)).current;
@@ -98,7 +118,7 @@ export default function HomeScreen() {
     }, [])
   );
 
-  // ── Speech events ────────────────────────────────────────────────────────────
+  // ── Speech events ─────────────────────────────────────────────────────────
 
   useSpeechRecognitionEvent('result', (event) => {
     const text = event.results[0]?.transcript ?? '';
@@ -122,7 +142,7 @@ export default function HomeScreen() {
     }
   });
 
-  // ── Animations ───────────────────────────────────────────────────────────────
+  // ── Animations ────────────────────────────────────────────────────────────
 
   function startRingPulse() {
     listeningLoop.current = Animated.loop(
@@ -153,7 +173,7 @@ export default function HomeScreen() {
     ]).start();
   }
 
-  // ── Data ─────────────────────────────────────────────────────────────────────
+  // ── Data ──────────────────────────────────────────────────────────────────
 
   async function fetchBirthdays() {
     const { data: { session } } = await supabase.auth.getSession();
@@ -178,7 +198,7 @@ export default function HomeScreen() {
     }
   }
 
-  // ── Voice flow ───────────────────────────────────────────────────────────────
+  // ── Voice flow ────────────────────────────────────────────────────────────
 
   async function handleButtonPress() {
     animateTap();
@@ -218,6 +238,7 @@ export default function HomeScreen() {
       setRelationship(parsed.relationship ?? '');
       setNotes(parsed.notes ?? '');
       setPhone('');
+      setSelectedContact(null);
       const cat = (parsed.category as CategoryKey) ?? 'birthday';
       setCategory(cat);
       setEmoji(parsed.emoji || defaultEmojiForCategory(cat));
@@ -242,11 +263,12 @@ export default function HomeScreen() {
     }
     setSaving(true);
     try {
+      const finalPhone = (selectedContact?.phone || phone).trim();
       const { id: personId } = await createPerson({
         name: name.trim(),
         relationship: relationship.trim(),
         notes: notes.trim(),
-        phone: phone.trim(),
+        phone: finalPhone || undefined,
       });
       await createEvent({
         person_id: personId,
@@ -277,9 +299,57 @@ export default function HomeScreen() {
     setEmoji('🎂');
     setParsedRecurring(true);
     setParsedTitle('');
+    setSelectedContact(null);
+    setAllContacts([]);
   }
 
-  // ── Derived display values ────────────────────────────────────────────────────
+  // ── Contacts picker ───────────────────────────────────────────────────────
+
+  async function openContactPicker() {
+    setContactSearch('');
+    setPickerVisible(true);
+
+    if (allContacts.length > 0) return;
+
+    setLoadingContacts(true);
+    try {
+      const { status } = await Contacts.requestPermissionsAsync();
+      if (status !== 'granted') {
+        setAllContacts(MOCK_CONTACTS);
+        setLoadingContacts(false);
+        return;
+      }
+      const { data } = await Contacts.getContactsAsync({
+        fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers],
+      });
+      const mapped: ContactMatch[] = data
+        .filter(c => c.phoneNumbers && c.phoneNumbers.length > 0)
+        .map(c => ({
+          id: c.id ?? '',
+          name: c.name ?? '',
+          phone: c.phoneNumbers![0].number ?? '',
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      setAllContacts(mapped);
+    } catch {
+      setAllContacts(MOCK_CONTACTS);
+    } finally {
+      setLoadingContacts(false);
+    }
+  }
+
+  function selectContact(contact: ContactMatch) {
+    setSelectedContact(contact);
+    setPhone(contact.phone);
+    setPickerVisible(false);
+  }
+
+  function clearContact() {
+    setSelectedContact(null);
+    setPhone('');
+  }
+
+  // ── Derived ───────────────────────────────────────────────────────────────
 
   const firstName = userEmail.split('@')[0].split('.')[0];
   const displayName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
@@ -292,7 +362,14 @@ export default function HomeScreen() {
     ? birthdays
     : birthdays.filter(b => b.event_type === activeFilter);
 
-  // ── Render ───────────────────────────────────────────────────────────────────
+  const filteredContacts = contactSearch.trim()
+    ? allContacts.filter(c =>
+        c.name.toLowerCase().includes(contactSearch.toLowerCase()) ||
+        c.phone.includes(contactSearch)
+      )
+    : allContacts;
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   const getCardTitle = (item: UpcomingEvent) => {
     if (item.event_type === 'birthday') return item.name;
@@ -312,17 +389,12 @@ export default function HomeScreen() {
         activeOpacity={0.75}
         style={[styles.card, isDeleting && styles.cardDeleting]}
       >
-        {/* Emoji — fixed 40 wide, never clips */}
         <Text style={styles.cardEmoji}>{displayEmoji}</Text>
-
-        {/* Text — flex:1 takes remaining space, prevents cutoff */}
         <View style={{ flex: 1 }}>
           <Text style={styles.cardName} numberOfLines={1}>{headline}</Text>
           <Text style={styles.cardDate}>{item.birthday}</Text>
           <Text style={styles.daysText}>{daysLabel}</Text>
         </View>
-
-        {/* Arrow — fixed on far right */}
         {isDeleting ? (
           <View style={styles.deleteRow}>
             <TouchableOpacity onPress={() => handleDelete(item)} style={styles.deleteBtn}>
@@ -360,7 +432,7 @@ export default function HomeScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* S button — top half, fixed */}
+      {/* S button */}
       <View style={styles.buttonSection}>
         {parsing ? (
           <>
@@ -399,11 +471,10 @@ export default function HomeScreen() {
         )}
       </View>
 
-      {/* Event list — bottom half, scrollable */}
+      {/* Event list */}
       <View style={styles.listSection}>
         <Text style={styles.sectionTitle}>Upcoming</Text>
 
-        {/* Category filter tabs */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -412,32 +483,22 @@ export default function HomeScreen() {
         >
           {[{ key: 'all', label: 'All' }, ...CATEGORY_CONFIG.map(c => ({ key: c.key, label: c.emoji }))].map(f => (
             <TouchableOpacity
-  key={f.key}
-  style={[styles.filterTab, activeFilter === f.key && styles.filterTabActive]}
-  onPress={() => setActiveFilter(f.key)}
->
-  {f.key === 'all' ? (
-    <Text
-      style={[
-        styles.filterTabText,
-        activeFilter === f.key && styles.filterTabTextActive,
-      ]}
-    >
-      {f.label}
-    </Text>
-  ) : (
-    <View style={styles.filterEmojiWrap}>
-      <Text
-        style={[
-          styles.filterEmojiText,
-          activeFilter === f.key && styles.filterTabTextActive,
-        ]}
-      >
-        {f.label}
-      </Text>
-    </View>
-  )}
-</TouchableOpacity>
+              key={f.key}
+              style={[styles.filterTab, activeFilter === f.key && styles.filterTabActive]}
+              onPress={() => setActiveFilter(f.key)}
+            >
+              {f.key === 'all' ? (
+                <Text style={[styles.filterTabText, activeFilter === f.key && styles.filterTabTextActive]}>
+                  {f.label}
+                </Text>
+              ) : (
+                <View style={styles.filterEmojiWrap}>
+                  <Text style={[styles.filterEmojiText, activeFilter === f.key && styles.filterTabTextActive]}>
+                    {f.label}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
           ))}
         </ScrollView>
 
@@ -473,7 +534,7 @@ export default function HomeScreen() {
           <View style={styles.sheet}>
             <View style={styles.sheetHandle} />
 
-            {/* Large emoji + tappable category pills */}
+            {/* Category pills */}
             <View style={styles.categoryHeader}>
               <Text style={styles.categoryEmoji}>{emoji}</Text>
               <View style={styles.categoryPills}>
@@ -481,10 +542,7 @@ export default function HomeScreen() {
                   <TouchableOpacity
                     key={c.key}
                     style={[styles.categoryPill, category === c.key && styles.categoryPillActive]}
-                    onPress={() => {
-                      setCategory(c.key);
-                      setEmoji(c.emoji);
-                    }}
+                    onPress={() => { setCategory(c.key); setEmoji(c.emoji); }}
                   >
                     <Text style={[styles.categoryPillText, category === c.key && styles.categoryPillTextActive]}>
                       {c.emoji} {c.label}
@@ -499,7 +557,6 @@ export default function HomeScreen() {
                 { label: 'Name *', value: name, onChange: setName, placeholder: 'Full name', caps: 'words' as const },
                 { label: 'Date *', value: birthday, onChange: setBirthday, placeholder: 'YYYY-MM-DD', keyboard: 'numbers-and-punctuation' as const },
                 { label: 'Relationship', value: relationship, onChange: setRelationship, placeholder: 'e.g. Mom, Best friend' },
-                { label: 'Phone', value: phone, onChange: setPhone, placeholder: '+1 555 000 0000', keyboard: 'phone-pad' as const },
                 { label: 'Notes', value: notes, onChange: setNotes, placeholder: 'Anything special…', multi: true },
               ] as const).map((f) => (
                 <View key={f.label} style={styles.formField}>
@@ -517,6 +574,48 @@ export default function HomeScreen() {
                   />
                 </View>
               ))}
+
+              {/* Phone / contact */}
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Phone (optional)</Text>
+                {selectedContact ? (
+                  <View style={styles.selectedContactRow}>
+                    <View style={styles.contactAvatar}>
+                      <Text style={styles.contactAvatarText}>
+                        {selectedContact.name.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={styles.contactInfo}>
+                      <Text style={styles.contactName}>{selectedContact.name}</Text>
+                      <Text style={styles.contactPhone}>{selectedContact.phone}</Text>
+                    </View>
+                    <TouchableOpacity onPress={clearContact} style={styles.clearBtn}>
+                      <Text style={styles.clearBtnText}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <>
+                    <TouchableOpacity
+                      style={styles.linkContactBtn}
+                      onPress={openContactPicker}
+                      activeOpacity={0.75}
+                    >
+                      <Text style={styles.linkContactIcon}>📱</Text>
+                      <Text style={styles.linkContactText}>Link to contact</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.orDivider}>or enter manually</Text>
+                    <TextInput
+                      style={styles.formInput}
+                      value={phone}
+                      onChangeText={setPhone}
+                      placeholder="+1 555 000 0000"
+                      placeholderTextColor={Colors.textMuted}
+                      keyboardType="phone-pad"
+                    />
+                  </>
+                )}
+              </View>
+
               <TouchableOpacity
                 style={[styles.saveBtn, saving && { opacity: 0.45 }]}
                 onPress={handleSave}
@@ -532,6 +631,80 @@ export default function HomeScreen() {
               <View style={{ height: 32 }} />
             </ScrollView>
           </View>
+          {/* Contact picker — overlay inside same Modal to avoid iOS nested-modal bug */}
+          {pickerVisible && (
+            <View style={styles.pickerOverlay}>
+              <View style={styles.pickerHeader}>
+                <Text style={styles.pickerTitle}>Choose Contact</Text>
+                <TouchableOpacity
+                  onPress={() => setPickerVisible(false)}
+                  style={styles.pickerCancelBtn}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.pickerCancelText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.searchRow}>
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search by name or number…"
+                  placeholderTextColor={Colors.textMuted}
+                  value={contactSearch}
+                  onChangeText={setContactSearch}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  clearButtonMode="while-editing"
+                />
+              </View>
+
+              {loadingContacts ? (
+                <View style={styles.pickerCenter}>
+                  <ActivityIndicator color={Colors.primary} size="large" />
+                  <Text style={styles.pickerHint}>Loading contacts…</Text>
+                </View>
+              ) : (
+                <FlatList
+                  data={filteredContacts}
+                  keyExtractor={item => item.id + item.phone}
+                  contentContainerStyle={styles.pickerList}
+                  keyboardShouldPersistTaps="handled"
+                  ListEmptyComponent={
+                    <Text style={styles.pickerHint}>
+                      {contactSearch ? 'No contacts match your search.' : 'No contacts with phone numbers found.'}
+                    </Text>
+                  }
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={styles.contactRow}
+                      onPress={() => selectContact(item)}
+                      activeOpacity={0.75}
+                    >
+                      <View style={styles.contactAvatar}>
+                        <Text style={styles.contactAvatarText}>
+                          {item.name.charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={styles.contactInfo}>
+                        <Text style={styles.contactName}>{item.name}</Text>
+                        <Text style={styles.contactPhone}>{item.phone}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  )}
+                />
+              )}
+
+              <View style={styles.pickerSkipFooter}>
+                <TouchableOpacity
+                  style={styles.skipBtn}
+                  onPress={() => setPickerVisible(false)}
+                  activeOpacity={0.75}
+                >
+                  <Text style={styles.skipBtnText}>Skip</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
         </KeyboardAvoidingView>
       </Modal>
     </View>
@@ -545,7 +718,7 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'ios' ? 60 : 40,
   },
 
-  // ── Header ──────────────────────────────────────────────────────────────────
+  // ── Header ────────────────────────────────────────────────────────────────
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -583,7 +756,7 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
 
-  // ── S Button (top half) ─────────────────────────────────────────────────────
+  // ── S button ──────────────────────────────────────────────────────────────
   buttonSection: {
     flex: 1,
     alignItems: 'center',
@@ -649,7 +822,7 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
 
-  // ── Event list (bottom half) ─────────────────────────────────────────────────
+  // ── Event list ────────────────────────────────────────────────────────────
   listSection: {
     flex: 1,
     paddingHorizontal: Spacing.xl,
@@ -671,40 +844,36 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
     marginBottom: Spacing.lg,
   },
-filterTab: {
-  minHeight: 40,
-  paddingHorizontal: Spacing.md,
-  borderRadius: 12,
-  backgroundColor: Colors.surface,
-  borderWidth: 1,
-  borderColor: Colors.surfaceHigh,
-  alignItems: 'center',
-  justifyContent: 'center',
-},
-
-filterTabText: {
-  fontSize: 13,
-  color: Colors.textMuted,
-  fontWeight: '500',
-  lineHeight: 16,
-},
-
-filterEmojiWrap: {
-  height: 22,
-  alignItems: 'center',
-  justifyContent: 'center',
-},
-
-filterEmojiText: {
-  fontSize: 16,
-  lineHeight: 20,
-  textAlign: 'center',
-},
+  filterTab: {
+    minHeight: 40,
+    paddingHorizontal: Spacing.md,
+    borderRadius: 12,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.surfaceHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterTabText: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    fontWeight: '500',
+    lineHeight: 16,
+  },
+  filterEmojiWrap: {
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterEmojiText: {
+    fontSize: 16,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
   filterTabActive: {
     backgroundColor: Colors.primaryLight,
     borderColor: Colors.primary,
   },
-
   filterTabTextActive: {
     color: Colors.textPrimary,
   },
@@ -781,8 +950,21 @@ filterEmojiText: {
     color: Colors.textSecondary,
     fontSize: 13,
   },
+  debugBtn: {
+    marginTop: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 8,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.surfaceHigh,
+    borderWidth: 1,
+    borderColor: Colors.textMuted,
+  },
+  debugBtnText: {
+    color: Colors.textSecondary,
+    fontSize: 12,
+  },
 
-  // ── Bottom sheet ─────────────────────────────────────────────────────────────
+  // ── Bottom sheet ──────────────────────────────────────────────────────────
   sheetOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
@@ -810,8 +992,6 @@ filterEmojiText: {
     alignSelf: 'center',
     marginBottom: Spacing.lg,
   },
-
-  // ── Category header in sheet ─────────────────────────────────────────────────
   categoryHeader: {
     alignItems: 'center',
     marginBottom: Spacing.lg,
@@ -848,8 +1028,6 @@ filterEmojiText: {
     color: Colors.textPrimary,
     fontWeight: '600',
   },
-
-  // ── Form fields ──────────────────────────────────────────────────────────────
   formField: {
     marginBottom: Spacing.md,
   },
@@ -875,6 +1053,50 @@ filterEmojiText: {
     minHeight: 80,
     paddingTop: 13,
   },
+  linkContactBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.surfaceHigh,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 13,
+    borderWidth: 1,
+    borderColor: Colors.textMuted,
+    marginBottom: Spacing.xs,
+  },
+  linkContactIcon: {
+    fontSize: 16,
+  },
+  linkContactText: {
+    color: Colors.textSecondary,
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  orDivider: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    marginVertical: Spacing.xs,
+  },
+  selectedContactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    backgroundColor: Colors.surfaceHigh,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 13,
+    borderWidth: 1,
+    borderColor: Colors.textMuted,
+  },
+  clearBtn: {
+    padding: Spacing.xs,
+  },
+  clearBtnText: {
+    color: Colors.textMuted,
+    fontSize: 16,
+  },
   saveBtn: {
     backgroundColor: Colors.primary,
     borderRadius: Radius.md,
@@ -892,17 +1114,122 @@ filterEmojiText: {
     fontSize: 16,
     fontWeight: '600',
   },
-  debugBtn: {
-    marginTop: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: 8,
-    borderRadius: Radius.sm,
-    backgroundColor: Colors.surfaceHigh,
-    borderWidth: 1,
-    borderColor: Colors.textMuted,
+
+  // ── Contact picker overlay ────────────────────────────────────────────────
+  pickerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: Colors.background,
+    zIndex: 10,
+    paddingTop: Platform.OS === 'ios' ? 60 : 40,
   },
-  debugBtnText: {
+  pickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.surfaceHigh,
+  },
+  pickerTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+  },
+  pickerCancelBtn: {
+    padding: Spacing.xs,
+  },
+  pickerCancelText: {
     color: Colors.textSecondary,
-    fontSize: 12,
+    fontSize: 15,
+  },
+  searchRow: {
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+  },
+  searchInput: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 11,
+    color: Colors.textPrimary,
+    fontSize: 15,
+    borderWidth: 1,
+    borderColor: Colors.surfaceHigh,
+  },
+  pickerCenter: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.lg,
+  },
+  pickerHint: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    paddingTop: Spacing.xl,
+    paddingHorizontal: Spacing.xl,
+  },
+  pickerList: {
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: 32,
+    gap: Spacing.sm,
+  },
+  contactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 13,
+    borderWidth: 1,
+    borderColor: Colors.surfaceHigh,
+  },
+  contactAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  contactAvatarText: {
+    color: Colors.textPrimary,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  contactInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  contactName: {
+    color: Colors.textPrimary,
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  contactPhone: {
+    color: Colors.textSecondary,
+    fontSize: 13,
+  },
+  pickerSkipFooter: {
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.xl,
+    borderTopWidth: 1,
+    borderTopColor: Colors.surfaceHigh,
+  },
+  skipBtn: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    paddingVertical: Spacing.lg,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.surfaceHigh,
+  },
+  skipBtnText: {
+    color: Colors.textSecondary,
+    fontSize: 15,
+    fontWeight: '500',
   },
 });

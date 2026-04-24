@@ -20,7 +20,7 @@ import {
   ExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent,
 } from 'expo-speech-recognition';
-import { getEvent, generateCard, updateCard, sendCard, updateEvent } from '../../lib/api';
+import { getEvent, generateCard, updateCard, sendCard, updateEvent, deleteEvent } from '../../lib/api';
 import { getLanguage } from '../../lib/storage';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 
@@ -183,10 +183,42 @@ export default function CardScreen() {
     setShowRecurringModal(true);
   }
 
-  async function handleRecurring(recurring: boolean) {
+  function handleRecurringYes() {
     setShowRecurringModal(false);
-    updateEvent(id, recurring).catch(() => {});
-    router.back();
+    updateEvent(id, true).catch(() => {});
+    router.replace('/');
+  }
+
+  async function handleRecurringNo() {
+    try {
+      console.log('Deleting event:', id);
+      const result = await deleteEvent(id);
+      console.log('Delete result:', JSON.stringify(result));
+      setShowRecurringModal(false);
+      router.replace('/');
+    } catch (err) {
+      console.error('Delete failed:', err);
+      Alert.alert('Error', 'Could not delete event');
+    }
+  }
+
+  function handleDelete() {
+    Alert.alert('Delete event?', 'This will remove the event and any saved cards.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteEvent(id);
+            router.replace('/');
+          } catch (err: any) {
+            console.error('Delete event failed:', err?.message ?? err);
+            Alert.alert('Error', err?.message ?? 'Could not delete event');
+          }
+        },
+      },
+    ]);
   }
 
   const dayLabel =
@@ -225,6 +257,9 @@ export default function CardScreen() {
             </>
           )}
         </View>
+        <TouchableOpacity onPress={handleDelete} style={styles.deleteBtn} activeOpacity={0.7}>
+          <Text style={styles.deleteIcon}>🗑</Text>
+        </TouchableOpacity>
       </View>
 
       {/* ── Step: mic ─────────────────────────────────────────────────────── */}
@@ -309,7 +344,7 @@ export default function CardScreen() {
         visible={showRecurringModal}
         transparent
         animationType="fade"
-        onRequestClose={() => handleRecurring(false)}
+        onRequestClose={handleRecurringNo}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
@@ -319,14 +354,14 @@ export default function CardScreen() {
             </Text>
             <TouchableOpacity
               style={styles.modalBtnPrimary}
-              onPress={() => handleRecurring(true)}
+              onPress={handleRecurringYes}
               activeOpacity={0.85}
             >
-              <Text style={styles.modalBtnPrimaryText}>Yes, remind me next year</Text>
+              <Text style={styles.modalBtnPrimaryText}>Yes, remind me next year 🔔</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.modalBtnSecondary}
-              onPress={() => handleRecurring(false)}
+              onPress={handleRecurringNo}
               activeOpacity={0.85}
             >
               <Text style={styles.modalBtnSecondaryText}>No thanks</Text>
@@ -526,6 +561,12 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     fontSize: 14,
     fontWeight: '500',
+  },
+  deleteBtn: {
+    padding: Spacing.xs,
+  },
+  deleteIcon: {
+    fontSize: 20,
   },
   tonePill: {
     alignSelf: 'flex-start',

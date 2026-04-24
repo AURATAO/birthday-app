@@ -41,6 +41,9 @@ export const updateEvent = (id: string, recurring: boolean) =>
 export const deletePerson = (id: string) =>
   apiFetch(`/api/people/${id}`, { method: 'DELETE' });
 
+export const deleteEvent = (id: string) =>
+  apiFetch(`/api/events/${id}`, { method: 'DELETE' });
+
 export const createEvent = (body: CreateEventBody) =>
   apiFetch<{ id: string }>('/api/events', { method: 'POST', body: JSON.stringify(body) });
 

@@ -67,6 +67,33 @@ func UpdateEvent(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+func DeleteEvent(c *gin.Context) {
+	eventID := c.Param("id")
+	userID, _ := c.Get("user_id")
+
+	_, err := DB.Exec(context.Background(),
+		`DELETE FROM cards WHERE birthday_id = $1`, eventID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	tag, err := DB.Exec(context.Background(),
+		`DELETE FROM events WHERE id = $1 AND user_id = $2`, eventID, userID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "event not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
 func CreateEvent(c *gin.Context) {
 	var req CreateEventRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

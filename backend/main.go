@@ -35,7 +35,7 @@ func main() {
 	// CORS — allow Next.js frontend
 	r.Use(func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", "*")
-		c.Header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
+		c.Header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Content-Type,Authorization")
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
@@ -60,6 +60,8 @@ func main() {
 		api.GET("/events/upcoming", handlers.GetUpcomingEvents)
 		api.GET("/events/:id", handlers.GetEvent)
 		api.PUT("/events/:id", handlers.UpdateEvent)
+		api.PATCH("/events/:id", handlers.UpdateEvent)
+		api.DELETE("/events/:id", handlers.DeleteEvent)
 
 		api.POST("/voice/parse", handlers.ParseVoice)
 

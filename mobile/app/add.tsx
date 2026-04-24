@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,7 @@ import {
   Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
   ExpoSpeechRecognitionModule,
@@ -42,6 +42,7 @@ interface ContactMatch {
 
 export default function AddScreen() {
   const router = useRouter();
+  const { autostart } = useLocalSearchParams<{ autostart?: string }>();
 
   const [step, setStep] = useState<Step>('mic');
   const [isListening, setIsListening] = useState(false);
@@ -70,6 +71,13 @@ export default function AddScreen() {
   const transcriptRef = useRef('');
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
+
+  useEffect(() => {
+    if (autostart === 'true') {
+      const t = setTimeout(() => startListening(), 500);
+      return () => clearTimeout(t);
+    }
+  }, []);
 
   useSpeechRecognitionEvent('result', (event) => {
     const text = event.results[0]?.transcript ?? '';
@@ -292,6 +300,20 @@ export default function AddScreen() {
                   <Text style={styles.transcriptText}>{transcript}</Text>
                 </View>
               ) : null}
+
+              <TouchableOpacity
+                onPress={() => {
+                  setName('Test Person');
+                  setBirthday('2026-05-01');
+                  setNotes('best friend, loves pizza');
+                  setStep('confirm');
+                }}
+                style={{ marginTop: 20 }}
+              >
+                <Text style={{ color: Colors.textMuted, fontSize: 12 }}>
+                  [Dev: skip to confirm]
+                </Text>
+              </TouchableOpacity>
             </>
           )}
         </View>
