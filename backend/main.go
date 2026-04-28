@@ -66,6 +66,7 @@ func main() {
 		api.POST("/voice/parse", handlers.ParseVoice)
 
 		api.POST("/card/generate", handlers.GenerateCard)
+		api.GET("/card/:id", handlers.GetCard)
 		api.PUT("/card/:id", handlers.UpdateCard)
 		api.DELETE("/card/:id", handlers.DeleteCard)
 		api.POST("/card/:id/send", handlers.SendCard)

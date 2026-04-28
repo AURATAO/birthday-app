@@ -179,6 +179,27 @@ Keep it to 3–5 sentences. Do not add a subject line or sign-off — just the m
 	})
 }
 
+func GetCard(c *gin.Context) {
+	cardID := c.Param("id")
+
+	var message string
+	var editedMessage *string
+	err := DB.QueryRow(context.Background(),
+		`SELECT message, edited_message FROM cards WHERE id = $1`,
+		cardID,
+	).Scan(&message, &editedMessage)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "card not found"})
+		return
+	}
+
+	if editedMessage != nil && *editedMessage != "" {
+		message = *editedMessage
+	}
+
+	c.JSON(http.StatusOK, gin.H{"id": cardID, "message": message})
+}
+
 type UpdateCardRequest struct {
 	EditedMessage string `json:"edited_message" binding:"required"`
 }
