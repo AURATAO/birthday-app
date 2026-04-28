@@ -20,7 +20,7 @@ import {
   ExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent,
 } from 'expo-speech-recognition';
-import { getEvent, generateCard, updateCard, sendCard, updateEvent, deleteEvent } from '../../lib/api';
+import { getEvent, getCard, generateCard, updateCard, sendCard, updateEvent, deleteEvent } from '../../lib/api';
 import { getLanguage } from '../../lib/storage';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
 
@@ -43,7 +43,7 @@ function daysUntilBirthday(birthdayStr: string): number {
 }
 
 export default function CardScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, card_id: cardIdParam } = useLocalSearchParams<{ id: string; card_id?: string }>();
   const router = useRouter();
 
   const [personName, setPersonName] = useState('');
@@ -58,6 +58,8 @@ export default function CardScreen() {
 
   const [cardId, setCardId] = useState('');
   const [message, setMessage] = useState('');
+  const [preGenerated, setPreGenerated] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
 
   const [showRecurringModal, setShowRecurringModal] = useState(false);
 
@@ -77,6 +79,20 @@ export default function CardScreen() {
       .catch((err) => Alert.alert('Error', err.message))
       .finally(() => setLoadingEvent(false));
   }, [id]);
+
+  useEffect(() => {
+    if (!cardIdParam) return;
+    getCard(cardIdParam)
+      .then((card) => {
+        setCardId(card.id);
+        setMessage(card.message);
+        setPreGenerated(true);
+        setStep('message');
+      })
+      .catch(() => {
+        // Pre-generated card unavailable — fall through to normal mic flow
+      });
+  }, [cardIdParam]);
 
   useSpeechRecognitionEvent('result', (event) => {
     const text = event.results[0]?.transcript ?? '';
@@ -296,15 +312,40 @@ export default function CardScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          {preGenerated && (
+            <View style={styles.preGenBanner}>
+              <Text style={styles.preGenBannerText}>💜 Samantha prepared this for you</Text>
+              <View style={styles.preGenActions}>
+                <TouchableOpacity
+                  style={styles.preGenBtn}
+                  onPress={() => { setStep('mic'); setPreGenerated(false); setIsEditing(false); }}
+                  activeOpacity={0.75}
+                >
+                  <Text style={styles.preGenBtnText}>Re-record 🎤</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.preGenBtn, isEditing && styles.preGenBtnActive]}
+                  onPress={() => setIsEditing((v) => !v)}
+                  activeOpacity={0.75}
+                >
+                  <Text style={[styles.preGenBtnText, isEditing && styles.preGenBtnActiveText]}>
+                    {isEditing ? 'Done ✓' : 'Edit ✏️'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>Your birthday message</Text>
             <TextInput
-              style={[styles.input, styles.messageInput]}
+              style={[styles.input, styles.messageInput, preGenerated && !isEditing && styles.messageReadOnly]}
               value={message}
               onChangeText={handleMessageChange}
               multiline
               textAlignVertical="top"
               placeholderTextColor={Colors.textMuted}
+              editable={!preGenerated || isEditing}
             />
           </View>
 
@@ -582,5 +623,50 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '500',
     color: Colors.textSecondary,
+  },
+  // ── Pre-generated banner ─────────────────────────────────────────────────────
+  preGenBanner: {
+    backgroundColor: 'rgba(124, 58, 237, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(124, 58, 237, 0.25)',
+    borderRadius: Radius.lg,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    gap: Spacing.sm,
+  },
+  preGenBannerText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  preGenActions: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    justifyContent: 'center',
+  },
+  preGenBtn: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 7,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.surfaceHigh,
+    backgroundColor: Colors.surface,
+  },
+  preGenBtnActive: {
+    borderColor: 'rgba(124, 58, 237, 0.5)',
+    backgroundColor: 'rgba(124, 58, 237, 0.12)',
+  },
+  preGenBtnText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: Colors.textSecondary,
+  },
+  preGenBtnActiveText: {
+    color: Colors.primary,
+  },
+  messageReadOnly: {
+    borderColor: 'transparent',
+    backgroundColor: Colors.surface,
   },
 });

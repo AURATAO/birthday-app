@@ -55,6 +55,9 @@ export const parseVoice = (transcript: string) =>
   });
 
 // Cards — birthday_id is an event id; voice_transcript matches the Go handler
+export const getCard = (cardId: string) =>
+  apiFetch<{ id: string; message: string }>(`/api/card/${cardId}`);
+
 export const generateCard = (birthdayId: string, voiceTranscript: string) =>
   apiFetch<{ id: string; message: string }>('/api/card/generate', {
     method: 'POST',
