@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
@@ -25,6 +24,9 @@ import * as Contacts from 'expo-contacts';
 import { parseVoice, createPerson, createEvent } from '../lib/api';
 import { getLanguage } from '../lib/storage';
 import { Colors, Spacing, Radius, Typography } from '../constants/theme';
+import { Button } from '../components/Button';
+import { Input } from '../components/Input';
+import { Avatar } from '../components/Avatar';
 
 const MOCK_CONTACTS = [
   { id: '1', name: 'Tania Chen', phone: '+39 333 123 4567' },
@@ -61,8 +63,6 @@ export default function AddScreen() {
   const [language, setLanguage] = useState('');
 
   const [selectedContact, setSelectedContact] = useState<ContactMatch | null>(null);
-
-  // Contact picker modal
   const [pickerVisible, setPickerVisible] = useState(false);
   const [allContacts, setAllContacts] = useState<ContactMatch[]>([]);
   const [contactSearch, setContactSearch] = useState('');
@@ -172,15 +172,12 @@ export default function AddScreen() {
   async function openContactPicker() {
     setContactSearch('');
     setPickerVisible(true);
-
-    if (allContacts.length > 0) return; // already loaded
-
+    if (allContacts.length > 0) return;
     setLoadingContacts(true);
     try {
       const { status } = await Contacts.requestPermissionsAsync();
       console.log('Contacts permission:', status);
       if (status !== 'granted') {
-        // Permission denied → fall back to mock data
         setAllContacts(MOCK_CONTACTS);
         setLoadingContacts(false);
         return;
@@ -198,7 +195,6 @@ export default function AddScreen() {
         .sort((a, b) => a.name.localeCompare(b.name));
       setAllContacts(mapped);
     } catch (e) {
-      // expo-contacts not available (old build) → use mock data
       console.log('Using mock contacts:', e);
       setAllContacts(MOCK_CONTACTS);
     } finally {
@@ -345,42 +341,9 @@ export default function AddScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Name *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Full name"
-            placeholderTextColor={Colors.textMuted}
-            value={name}
-            onChangeText={setName}
-            autoCapitalize="words"
-          />
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Date *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="YYYY-MM-DD"
-            placeholderTextColor={Colors.textMuted}
-            value={birthday}
-            onChangeText={setBirthday}
-            keyboardType="numbers-and-punctuation"
-          />
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Note</Text>
-          <TextInput
-            style={[styles.input, styles.inputMultiline]}
-            placeholder="Anything personal to remember about them…"
-            placeholderTextColor={Colors.textMuted}
-            value={notes}
-            onChangeText={setNotes}
-            multiline
-            textAlignVertical="top"
-          />
-        </View>
+        <Input label="Name *" value={name} onChangeText={setName} placeholder="Full name" autoCapitalize="words" />
+        <Input label="Date *" value={birthday} onChangeText={setBirthday} placeholder="YYYY-MM-DD" keyboardType="numbers-and-punctuation" />
+        <Input label="Note" value={notes} onChangeText={setNotes} placeholder="Anything personal to remember about them…" multiline />
 
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Phone (optional)</Text>
@@ -388,11 +351,7 @@ export default function AddScreen() {
           {console.log('RENDERING LINK CONTACT BUTTON') as any}
           {selectedContact ? (
             <View style={styles.selectedContactRow}>
-              <View style={styles.contactAvatar}>
-                <Text style={styles.contactAvatarText}>
-                  {selectedContact.name.charAt(0).toUpperCase()}
-                </Text>
-              </View>
+              <Avatar name={selectedContact.name} size={40} />
               <View style={styles.contactInfo}>
                 <Text style={styles.contactName}>{selectedContact.name}</Text>
                 <Text style={styles.contactPhone}>{selectedContact.phone}</Text>
@@ -414,30 +373,12 @@ export default function AddScreen() {
 
               <Text style={styles.orDivider}>or enter manually</Text>
 
-              <TextInput
-                style={styles.input}
-                placeholder="+1 555 000 0000"
-                placeholderTextColor={Colors.textMuted}
-                value={phone}
-                onChangeText={setPhone}
-                keyboardType="phone-pad"
-              />
+              <Input value={phone} onChangeText={setPhone} placeholder="+1 555 000 0000" keyboardType="phone-pad" />
             </>
           )}
         </View>
 
-        <TouchableOpacity
-          style={[styles.saveBtn, saving && styles.btnDisabled]}
-          onPress={handleSave}
-          disabled={saving}
-          activeOpacity={0.85}
-        >
-          {saving ? (
-            <ActivityIndicator color={Colors.textPrimary} />
-          ) : (
-            <Text style={styles.saveBtnText}>Save</Text>
-          )}
-        </TouchableOpacity>
+        <Button label="Save" onPress={handleSave} variant="primary" loading={saving} />
       </ScrollView>
 
       {/* ── Contact picker modal ─────────────────────────────────────────────── */}
@@ -460,15 +401,11 @@ export default function AddScreen() {
           </View>
 
           <View style={styles.searchRow}>
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search by name or number…"
-              placeholderTextColor={Colors.textMuted}
+            <Input
               value={contactSearch}
               onChangeText={setContactSearch}
+              placeholder="Search by name or number…"
               autoCapitalize="none"
-              autoCorrect={false}
-              clearButtonMode="while-editing"
             />
           </View>
 
@@ -494,11 +431,7 @@ export default function AddScreen() {
                   onPress={() => selectContact(item)}
                   activeOpacity={0.75}
                 >
-                  <View style={styles.contactAvatar}>
-                    <Text style={styles.contactAvatarText}>
-                      {item.name.charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
+                  <Avatar name={item.name} size={40} />
                   <View style={styles.contactInfo}>
                     <Text style={styles.contactName}>{item.name}</Text>
                     <Text style={styles.contactPhone}>{item.phone}</Text>
@@ -509,13 +442,7 @@ export default function AddScreen() {
           )}
 
           <View style={styles.modalSkipFooter}>
-            <TouchableOpacity
-              style={styles.skipBtn}
-              onPress={() => setPickerVisible(false)}
-              activeOpacity={0.75}
-            >
-              <Text style={styles.skipBtnText}>Skip</Text>
-            </TouchableOpacity>
+            <Button label="Skip" onPress={() => setPickerVisible(false)} variant="secondary" />
           </View>
         </SafeAreaView>
       </Modal>
@@ -547,7 +474,6 @@ const styles = StyleSheet.create({
     ...Typography.h2,
     fontWeight: '600',
   },
-  // ── Mic screen ──────────────────────────────────────────────────────────────
   micScreen: {
     flex: 1,
     alignItems: 'center',
@@ -599,7 +525,6 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     textAlign: 'center',
   },
-  // ── Confirm screen ──────────────────────────────────────────────────────────
   scroll: {
     paddingHorizontal: Spacing.xl,
     paddingBottom: 52,
@@ -614,20 +539,6 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1.1,
-  },
-  input: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.md,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: 13,
-    color: Colors.textPrimary,
-    fontSize: 15,
-    borderWidth: 1,
-    borderColor: Colors.surfaceHigh,
-  },
-  inputMultiline: {
-    minHeight: 88,
-    paddingTop: 13,
   },
   linkContactBtn: {
     flexDirection: 'row',
@@ -672,27 +583,6 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     fontSize: 16,
   },
-  saveBtn: {
-    backgroundColor: Colors.primary,
-    borderRadius: Radius.md,
-    paddingVertical: Spacing.lg,
-    alignItems: 'center',
-    marginTop: Spacing.sm,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  saveBtnText: {
-    color: Colors.textPrimary,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  btnDisabled: {
-    opacity: 0.45,
-  },
-  // ── Contact picker modal ─────────────────────────────────────────────────────
   modalContainer: {
     flex: 1,
     backgroundColor: Colors.background,
@@ -721,16 +611,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
     paddingVertical: Spacing.md,
   },
-  searchInput: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.md,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: 11,
-    color: Colors.textPrimary,
-    fontSize: 15,
-    borderWidth: 1,
-    borderColor: Colors.surfaceHigh,
-  },
   pickerList: {
     paddingHorizontal: Spacing.xl,
     paddingBottom: 32,
@@ -746,19 +626,6 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
     borderWidth: 1,
     borderColor: Colors.surfaceHigh,
-  },
-  contactAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  contactAvatarText: {
-    color: Colors.textPrimary,
-    fontSize: 16,
-    fontWeight: '600',
   },
   contactInfo: {
     flex: 1,
@@ -792,18 +659,5 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.xl,
     borderTopWidth: 1,
     borderTopColor: Colors.surfaceHigh,
-  },
-  skipBtn: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.md,
-    paddingVertical: Spacing.lg,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.surfaceHigh,
-  },
-  skipBtnText: {
-    color: Colors.textSecondary,
-    fontSize: 15,
-    fontWeight: '500',
   },
 });

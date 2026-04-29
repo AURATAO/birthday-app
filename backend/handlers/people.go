@@ -82,7 +82,9 @@ func DeletePerson(c *gin.Context) {
 	personID := c.Param("id")
 	userID, _ := c.Get("user_id")
 
-	tag, err := DB.Exec(context.Background(),
+	ctx := context.Background()
+
+	tag, err := DB.Exec(ctx,
 		`UPDATE people SET deleted_at = NOW()
 		 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
 		personID, userID,
@@ -95,6 +97,9 @@ func DeletePerson(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "person not found"})
 		return
 	}
+
+	DB.Exec(ctx, "DELETE FROM cards WHERE event_id IN (SELECT id FROM events WHERE person_id = $1)", personID)
+	DB.Exec(ctx, "DELETE FROM events WHERE person_id = $1", personID)
 
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }

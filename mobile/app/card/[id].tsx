@@ -20,9 +20,10 @@ import {
   ExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent,
 } from 'expo-speech-recognition';
-import { getEvent, getCard, generateCard, updateCard, sendCard, updateEvent, deleteEvent } from '../../lib/api';
+import { apiFetch, getEvent, getCard, generateCard, updateCard, sendCard, updateEvent, deleteEvent } from '../../lib/api';
 import { getLanguage } from '../../lib/storage';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
+import { Button } from '../../components/Button';
 
 type Step = 'mic' | 'message';
 
@@ -194,8 +195,6 @@ export default function CardScreen() {
     Linking.openURL(urls[channel]).catch(() =>
       Alert.alert('Could not open app', `Make sure ${channel} is installed.`)
     );
-
-    // Show recurring modal after attempting to share
     setShowRecurringModal(true);
   }
 
@@ -207,8 +206,13 @@ export default function CardScreen() {
 
   async function handleRecurringNo() {
     try {
-      console.log('Deleting event:', id);
-      const result = await deleteEvent(id);
+      const eventId = id;
+      console.log('Deleting event ID:', eventId);
+      const response = await apiFetch(`/api/events/${eventId}`, {
+        method: 'DELETE',
+      });
+      console.log('Delete status:', response.status);
+      const result = await response.json();
       console.log('Delete result:', JSON.stringify(result));
       setShowRecurringModal(false);
       router.replace('/');
@@ -393,20 +397,8 @@ export default function CardScreen() {
             <Text style={styles.modalMessage}>
               Want Samantha to remind you again next year?
             </Text>
-            <TouchableOpacity
-              style={styles.modalBtnPrimary}
-              onPress={handleRecurringYes}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.modalBtnPrimaryText}>Yes, remind me next year 🔔</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.modalBtnSecondary}
-              onPress={handleRecurringNo}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.modalBtnSecondaryText}>No thanks</Text>
-            </TouchableOpacity>
+            <Button label="Yes, remind me next year 🔔" onPress={handleRecurringYes} variant="primary" />
+            <Button label="No thanks" onPress={handleRecurringNo} variant="ghost" />
           </View>
         </View>
       </Modal>
@@ -447,7 +439,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontWeight: '500',
   },
-  // ── Mic screen ──────────────────────────────────────────────────────────────
   micScreen: {
     flex: 1,
     alignItems: 'center',
@@ -483,7 +474,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
   },
-  // ── Message + share ─────────────────────────────────────────────────────────
   scroll: {
     paddingHorizontal: Spacing.xl,
     paddingBottom: 52,
@@ -513,6 +503,10 @@ const styles = StyleSheet.create({
     minHeight: 200,
     paddingTop: 13,
     lineHeight: 22,
+  },
+  messageReadOnly: {
+    borderColor: 'transparent',
+    backgroundColor: Colors.surface,
   },
   shareRow: {
     flexDirection: 'row',
@@ -548,7 +542,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.textPrimary,
   },
-  // ── Modal ────────────────────────────────────────────────────────────────────
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.65)',
@@ -578,31 +571,6 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginBottom: Spacing.sm,
   },
-  modalBtnPrimary: {
-    backgroundColor: Colors.primary,
-    borderRadius: Radius.md,
-    paddingVertical: Spacing.lg,
-    alignItems: 'center',
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  modalBtnPrimaryText: {
-    color: Colors.textPrimary,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  modalBtnSecondary: {
-    paddingVertical: Spacing.md,
-    alignItems: 'center',
-  },
-  modalBtnSecondaryText: {
-    color: Colors.textMuted,
-    fontSize: 14,
-    fontWeight: '500',
-  },
   deleteBtn: {
     padding: Spacing.xs,
   },
@@ -624,7 +592,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: Colors.textSecondary,
   },
-  // ── Pre-generated banner ─────────────────────────────────────────────────────
   preGenBanner: {
     backgroundColor: 'rgba(124, 58, 237, 0.08)',
     borderWidth: 1,
@@ -664,9 +631,5 @@ const styles = StyleSheet.create({
   },
   preGenBtnActiveText: {
     color: Colors.primary,
-  },
-  messageReadOnly: {
-    borderColor: 'transparent',
-    backgroundColor: Colors.surface,
   },
 });

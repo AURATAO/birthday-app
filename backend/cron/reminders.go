@@ -172,10 +172,10 @@ func runTodayReminders() {
 		  AND NOT EXISTS (
 		      SELECT 1 FROM cards c
 		      WHERE c.event_id  = e.id
-		        AND c.status    = 'sent'
+		        AND c.status    = $1
 		        AND c.created_at::date = CURRENT_DATE
 		  )
-	`)
+	`, "sent")
 	if err != nil {
 		log.Printf("[reminders] today query error: %v", err)
 		return
@@ -330,8 +330,8 @@ Write the message directly to %s. Keep it to 3–5 sentences. No subject line or
 
 	var cardID string
 	err = handlers.DB.QueryRow(context.Background(),
-		`INSERT INTO cards (birthday_id, message, status) VALUES ($1, $2, 'pre_generated') RETURNING id`,
-		r.eventID, message,
+		`INSERT INTO cards (birthday_id, message, status) VALUES ($1, $2, $3) RETURNING id`,
+		r.eventID, message, "pre_generated",
 	).Scan(&cardID)
 	if err != nil {
 		return "", "", fmt.Errorf("save card: %w", err)

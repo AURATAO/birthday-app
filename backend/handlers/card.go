@@ -165,8 +165,8 @@ Keep it to 3–5 sentences. Do not add a subject line or sign-off — just the m
 	// Save card with status 'pending'
 	var cardID string
 	err = DB.QueryRow(context.Background(),
-		`INSERT INTO cards (birthday_id, message, status) VALUES ($1, $2, 'pending') RETURNING id`,
-		req.BirthdayID, message,
+		`INSERT INTO cards (birthday_id, message, status) VALUES ($1, $2, $3) RETURNING id`,
+		req.BirthdayID, message, "pending",
 	).Scan(&cardID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save card: " + err.Error()})
@@ -261,8 +261,8 @@ func SendCard(c *gin.Context) {
 	}
 
 	tag, err := DB.Exec(context.Background(),
-		`UPDATE cards SET status='sent', channel=$1 WHERE id=$2`,
-		req.Channel, cardID,
+		`UPDATE cards SET status=$1, channel=$2 WHERE id=$3`,
+		"sent", req.Channel, cardID,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

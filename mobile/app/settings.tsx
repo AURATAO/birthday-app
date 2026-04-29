@@ -14,6 +14,7 @@ import { StatusBar } from 'expo-status-bar';
 import { supabase } from '../lib/supabase';
 import { getLanguage, setLanguage } from '../lib/storage';
 import { Colors, Spacing, Radius, Typography } from '../constants/theme';
+import { Button } from '../components/Button';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -155,43 +156,29 @@ export default function SettingsScreen() {
 
         {/* DEBUG: Copy Token */}
         <TouchableOpacity
-          style={styles.logoutBtn}
+          style={styles.debugBtn}
           onPress={async () => {
             const { data: { session } } = await supabase.auth.getSession();
             console.log('MY TOKEN:', session?.access_token);
           }}
           activeOpacity={0.8}
         >
-          <Text style={styles.logoutText}>Copy Token</Text>
+          <Text style={styles.debugBtnText}>Copy Token</Text>
         </TouchableOpacity>
 
-        {/* Logout */}
-        <TouchableOpacity
-          style={[styles.logoutBtn, loggingOut && styles.logoutBtnDisabled]}
+        <Button
+          label={loggingOut ? (isChinese ? '退出中...' : 'Logging out...') : (isChinese ? '退出登录' : 'Log out')}
           onPress={handleLogout}
+          variant="danger"
           disabled={loggingOut}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.logoutText}>
-            {loggingOut
-              ? (isChinese ? '退出中...' : 'Logging out...')
-              : (isChinese ? '退出登录' : 'Log out')}
-          </Text>
-        </TouchableOpacity>
+        />
 
-        {/* Delete account */}
-        <TouchableOpacity
-          style={[styles.deleteBtn, deletingAccount && styles.logoutBtnDisabled]}
+        <Button
+          label={deletingAccount ? (isChinese ? '删除中...' : 'Deleting...') : (isChinese ? '删除账户' : 'Delete account')}
           onPress={handleDeleteAccount}
+          variant="ghost"
           disabled={deletingAccount}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.deleteText}>
-            {deletingAccount
-              ? (isChinese ? '删除中...' : 'Deleting...')
-              : (isChinese ? '删除账户' : 'Delete account')}
-          </Text>
-        </TouchableOpacity>
+        />
       </View>
     </View>
   );
@@ -259,33 +246,6 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'right',
   },
-  logoutBtn: {
-    backgroundColor: `rgba(226, 75, 74, 0.1)`,
-    borderWidth: 1,
-    borderColor: Colors.danger,
-    borderRadius: Radius.md,
-    paddingVertical: Spacing.lg,
-    alignItems: 'center',
-    marginTop: Spacing.sm,
-  },
-  logoutBtnDisabled: {
-    opacity: 0.5,
-  },
-  logoutText: {
-    color: Colors.danger,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  deleteBtn: {
-    borderRadius: Radius.md,
-    paddingVertical: Spacing.lg,
-    alignItems: 'center',
-  },
-  deleteText: {
-    color: Colors.textMuted,
-    fontSize: 13,
-    fontWeight: '500',
-  },
   rowSubLabel: {
     fontSize: 12,
     color: Colors.textSecondary,
@@ -294,5 +254,18 @@ const styles = StyleSheet.create({
   rowChevron: {
     fontSize: 20,
     color: Colors.textMuted,
+  },
+  debugBtn: {
+    backgroundColor: Colors.surfaceHigh,
+    borderRadius: Radius.md,
+    paddingVertical: Spacing.lg,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.textMuted,
+  },
+  debugBtnText: {
+    color: Colors.textSecondary,
+    fontSize: 13,
+    fontWeight: '500',
   },
 });

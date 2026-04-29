@@ -24,7 +24,6 @@ import * as Contacts from 'expo-contacts';
 import { supabase } from '../lib/supabase';
 import {
   getUpcomingBirthdays,
-  deletePerson,
   parseVoice,
   createPerson,
   createEvent,
@@ -33,6 +32,11 @@ import {
 import { registerForPushNotifications } from './_layout';
 import { getLanguage } from '../lib/storage';
 import { Colors, Spacing, Radius } from '../constants/theme';
+import { Button } from '../components/Button';
+import { Input } from '../components/Input';
+import { EventCard } from '../components/EventCard';
+import { CategoryPill } from '../components/CategoryPill';
+import { Avatar } from '../components/Avatar';
 
 type CategoryKey = 'birthday' | 'milestone' | 'anniversary' | 'hard_date';
 
@@ -59,28 +63,20 @@ function defaultEmojiForCategory(cat: string): string {
   return CATEGORY_CONFIG.find(c => c.key === cat)?.emoji ?? '🎂';
 }
 
-function displayEmojiForEvent(item: UpcomingEvent): string {
-  if (item.emoji) return item.emoji;
-  return defaultEmojiForCategory(item.event_type);
-}
-
 export default function HomeScreen() {
   const router = useRouter();
 
-  // List state
   const [birthdays, setBirthdays] = useState<UpcomingEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<string>('all');
 
-  // Recording state
   const [isListening, setIsListening] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [transcript, setTranscript] = useState('');
   const transcriptRef = useRef('');
 
-  // Form / bottom sheet state
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState('');
   const [birthday, setBirthday] = useState('');
@@ -93,14 +89,12 @@ export default function HomeScreen() {
   const [parsedTitle, setParsedTitle] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Contact picker state
   const [selectedContact, setSelectedContact] = useState<ContactMatch | null>(null);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [allContacts, setAllContacts] = useState<ContactMatch[]>([]);
   const [contactSearch, setContactSearch] = useState('');
   const [loadingContacts, setLoadingContacts] = useState(false);
 
-  // Animations
   const tapAnim = useRef(new Animated.Value(1)).current;
   const ring1Anim = useRef(new Animated.Value(1)).current;
   const ring2Anim = useRef(new Animated.Value(1)).current;
@@ -117,8 +111,6 @@ export default function HomeScreen() {
       fetchBirthdays();
     }, [])
   );
-
-  // ── Speech events ─────────────────────────────────────────────────────────
 
   useSpeechRecognitionEvent('result', (event) => {
     const text = event.results[0]?.transcript ?? '';
@@ -141,8 +133,6 @@ export default function HomeScreen() {
       Alert.alert('Voice error', event.message ?? event.error);
     }
   });
-
-  // ── Animations ────────────────────────────────────────────────────────────
 
   function startRingPulse() {
     listeningLoop.current = Animated.loop(
@@ -173,8 +163,6 @@ export default function HomeScreen() {
     ]).start();
   }
 
-  // ── Data ──────────────────────────────────────────────────────────────────
-
   async function fetchBirthdays() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
@@ -188,17 +176,32 @@ export default function HomeScreen() {
     }
   }
 
-  async function handleDelete(item: UpcomingEvent) {
+  async function handleDelete(personId: string) {
+    console.log('Deleting person ID:', personId);
     try {
-      await deletePerson(item.person_id);
-      setBirthdays((prev) => prev.filter((b) => b.id !== item.id));
-      setDeletingId(null);
-    } catch (err: any) {
-      Alert.alert('Error', err.message);
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/people/${personId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      console.log('Delete response status:', response.status);
+      if (response.status === 200 || response.status === 204) {
+        console.log('Delete successful!');
+        setBirthdays((prev) => prev.filter((b) => b.person_id !== personId));
+        setDeletingId(null);
+      } else {
+        const result = await response.json();
+        Alert.alert('Error', result.error || 'Could not delete');
+      }
+    } catch (err) {
+      console.error('Delete failed:', err);
+      Alert.alert('Error', String(err));
     }
   }
-
-  // ── Voice flow ────────────────────────────────────────────────────────────
 
   async function handleButtonPress() {
     animateTap();
@@ -270,7 +273,8 @@ export default function HomeScreen() {
         notes: notes.trim(),
         phone: finalPhone || undefined,
       });
-      await createEvent({
+      console.log('Created person:', personId);
+      const { id: eventId } = await createEvent({
         person_id: personId,
         event_date: birthday.trim(),
         type: category,
@@ -278,6 +282,7 @@ export default function HomeScreen() {
         emoji,
         recurring: parsedRecurring,
       });
+      console.log('Created event:', eventId);
       dismissForm();
       setTranscript('');
       fetchBirthdays();
@@ -303,14 +308,10 @@ export default function HomeScreen() {
     setAllContacts([]);
   }
 
-  // ── Contacts picker ───────────────────────────────────────────────────────
-
   async function openContactPicker() {
     setContactSearch('');
     setPickerVisible(true);
-
     if (allContacts.length > 0) return;
-
     setLoadingContacts(true);
     try {
       const { status } = await Contacts.requestPermissionsAsync();
@@ -349,14 +350,10 @@ export default function HomeScreen() {
     setPhone('');
   }
 
-  // ── Derived ───────────────────────────────────────────────────────────────
-
   const firstName = userEmail.split('@')[0].split('.')[0];
   const displayName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
-
   const hour = new Date().getHours();
-  const greeting =
-    hour < 12 ? 'good morning' : hour < 17 ? 'good afternoon' : 'good evening';
+  const greeting = hour < 12 ? 'good morning' : hour < 17 ? 'good afternoon' : 'good evening';
 
   const filteredBirthdays = activeFilter === 'all'
     ? birthdays
@@ -369,47 +366,16 @@ export default function HomeScreen() {
       )
     : allContacts;
 
-  // ── Render ────────────────────────────────────────────────────────────────
-
-  const getCardTitle = (item: UpcomingEvent) => {
-    if (item.event_type === 'birthday') return item.name;
-    if (item.title) return `${item.name} · ${item.title}`;
-    return item.name;
-  };
-
-  const renderBirthday = useCallback(({ item }: { item: UpcomingEvent }) => {
-    const isDeleting = deletingId === item.id;
-    const displayEmoji = displayEmojiForEvent(item);
-    const headline = getCardTitle(item);
-    const daysLabel = item.days_until === 0 ? 'Today!' : item.days_until === 1 ? 'Tomorrow' : `in ${item.days_until} days`;
-    return (
-      <TouchableOpacity
-        onPress={() => !deletingId && router.push(`/card/${item.id}`)}
-        onLongPress={() => setDeletingId(item.id)}
-        activeOpacity={0.75}
-        style={[styles.card, isDeleting && styles.cardDeleting]}
-      >
-        <Text style={styles.cardEmoji}>{displayEmoji}</Text>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.cardName} numberOfLines={1}>{headline}</Text>
-          <Text style={styles.cardDate}>{item.birthday}</Text>
-          <Text style={styles.daysText}>{daysLabel}</Text>
-        </View>
-        {isDeleting ? (
-          <View style={styles.deleteRow}>
-            <TouchableOpacity onPress={() => handleDelete(item)} style={styles.deleteBtn}>
-              <Text style={styles.deleteBtnText}>Delete</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setDeletingId(null)} style={styles.cancelBtn}>
-              <Text style={styles.cancelBtnText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <Text style={styles.chevron}>›</Text>
-        )}
-      </TouchableOpacity>
-    );
-  }, [deletingId]);
+  const renderBirthday = useCallback(({ item }: { item: UpcomingEvent }) => (
+    <EventCard
+      event={item}
+      onPress={() => !deletingId && router.push(`/card/${item.id}`)}
+      onLongPress={() => setDeletingId(item.id)}
+      isDeleting={deletingId === item.id}
+      onDelete={() => handleDelete(item.person_id)}
+      onCancelDelete={() => setDeletingId(null)}
+    />
+  ), [deletingId]);
 
   return (
     <View style={styles.container}>
@@ -424,11 +390,7 @@ export default function HomeScreen() {
           <Text style={styles.appName}>Samantha</Text>
         </View>
         <TouchableOpacity onPress={() => router.push('/settings')} style={styles.settingsBtn}>
-          <View style={styles.settingsCircle}>
-            <Text style={styles.settingsInitial}>
-              {displayName ? displayName[0].toUpperCase() : '?'}
-            </Text>
-          </View>
+          <Avatar name={displayName || '?'} size={36} />
         </TouchableOpacity>
       </View>
 
@@ -481,24 +443,15 @@ export default function HomeScreen() {
           style={styles.filterScroll}
           contentContainerStyle={styles.filterRow}
         >
-          {[{ key: 'all', label: 'All' }, ...CATEGORY_CONFIG.map(c => ({ key: c.key, label: c.emoji }))].map(f => (
-            <TouchableOpacity
-              key={f.key}
-              style={[styles.filterTab, activeFilter === f.key && styles.filterTabActive]}
-              onPress={() => setActiveFilter(f.key)}
-            >
-              {f.key === 'all' ? (
-                <Text style={[styles.filterTabText, activeFilter === f.key && styles.filterTabTextActive]}>
-                  {f.label}
-                </Text>
-              ) : (
-                <View style={styles.filterEmojiWrap}>
-                  <Text style={[styles.filterEmojiText, activeFilter === f.key && styles.filterTabTextActive]}>
-                    {f.label}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
+          <CategoryPill category="all" label="All" selected={activeFilter === 'all'} onPress={() => setActiveFilter('all')} />
+          {CATEGORY_CONFIG.map(c => (
+            <CategoryPill
+              key={c.key}
+              category={c.key}
+              emoji={c.emoji}
+              selected={activeFilter === c.key}
+              onPress={() => setActiveFilter(c.key)}
+            />
           ))}
         </ScrollView>
 
@@ -553,38 +506,25 @@ export default function HomeScreen() {
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              {([
-                { label: 'Name *', value: name, onChange: setName, placeholder: 'Full name', caps: 'words' as const },
-                { label: 'Date *', value: birthday, onChange: setBirthday, placeholder: 'YYYY-MM-DD', keyboard: 'numbers-and-punctuation' as const },
-                { label: 'Relationship', value: relationship, onChange: setRelationship, placeholder: 'e.g. Mom, Best friend' },
-                { label: 'Notes', value: notes, onChange: setNotes, placeholder: 'Anything special…', multi: true },
-              ] as const).map((f) => (
-                <View key={f.label} style={styles.formField}>
-                  <Text style={styles.formLabel}>{f.label}</Text>
-                  <TextInput
-                    style={[styles.formInput, 'multi' in f && f.multi && styles.formInputMulti]}
-                    value={f.value}
-                    onChangeText={f.onChange}
-                    placeholder={f.placeholder}
-                    placeholderTextColor={Colors.textMuted}
-                    autoCapitalize={'caps' in f ? f.caps : 'none'}
-                    keyboardType={'keyboard' in f ? f.keyboard : 'default'}
-                    multiline={'multi' in f && f.multi}
-                    textAlignVertical={'multi' in f && f.multi ? 'top' : 'auto'}
-                  />
-                </View>
-              ))}
+              <View style={styles.formField}>
+                <Input label="Name *" value={name} onChangeText={setName} placeholder="Full name" autoCapitalize="words" />
+              </View>
+              <View style={styles.formField}>
+                <Input label="Date *" value={birthday} onChangeText={setBirthday} placeholder="YYYY-MM-DD" keyboardType="numbers-and-punctuation" />
+              </View>
+              <View style={styles.formField}>
+                <Input label="Relationship" value={relationship} onChangeText={setRelationship} placeholder="e.g. Mom, Best friend" autoCapitalize="sentences" />
+              </View>
+              <View style={styles.formField}>
+                <Input label="Notes" value={notes} onChangeText={setNotes} placeholder="Anything special…" multiline />
+              </View>
 
               {/* Phone / contact */}
               <View style={styles.formField}>
                 <Text style={styles.formLabel}>Phone (optional)</Text>
                 {selectedContact ? (
                   <View style={styles.selectedContactRow}>
-                    <View style={styles.contactAvatar}>
-                      <Text style={styles.contactAvatarText}>
-                        {selectedContact.name.charAt(0).toUpperCase()}
-                      </Text>
-                    </View>
+                    <Avatar name={selectedContact.name} size={40} />
                     <View style={styles.contactInfo}>
                       <Text style={styles.contactName}>{selectedContact.name}</Text>
                       <Text style={styles.contactPhone}>{selectedContact.phone}</Text>
@@ -616,21 +556,11 @@ export default function HomeScreen() {
                 )}
               </View>
 
-              <TouchableOpacity
-                style={[styles.saveBtn, saving && { opacity: 0.45 }]}
-                onPress={handleSave}
-                disabled={saving}
-                activeOpacity={0.85}
-              >
-                {saving ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.saveBtnText}>Save</Text>
-                )}
-              </TouchableOpacity>
+              <Button label="Save" onPress={handleSave} variant="primary" loading={saving} />
               <View style={{ height: 32 }} />
             </ScrollView>
           </View>
+
           {/* Contact picker — overlay inside same Modal to avoid iOS nested-modal bug */}
           {pickerVisible && (
             <View style={styles.pickerOverlay}>
@@ -680,11 +610,7 @@ export default function HomeScreen() {
                       onPress={() => selectContact(item)}
                       activeOpacity={0.75}
                     >
-                      <View style={styles.contactAvatar}>
-                        <Text style={styles.contactAvatarText}>
-                          {item.name.charAt(0).toUpperCase()}
-                        </Text>
-                      </View>
+                      <Avatar name={item.name} size={40} />
                       <View style={styles.contactInfo}>
                         <Text style={styles.contactName}>{item.name}</Text>
                         <Text style={styles.contactPhone}>{item.phone}</Text>
@@ -717,8 +643,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
     paddingTop: Platform.OS === 'ios' ? 60 : 40,
   },
-
-  // ── Header ────────────────────────────────────────────────────────────────
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -740,23 +664,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   settingsBtn: { padding: Spacing.xs },
-  settingsCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.surfaceHigh,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Colors.textMuted,
-  },
-  settingsInitial: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.textSecondary,
-  },
-
-  // ── S button ──────────────────────────────────────────────────────────────
   buttonSection: {
     flex: 1,
     alignItems: 'center',
@@ -821,8 +728,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
     fontStyle: 'italic',
   },
-
-  // ── Event list ────────────────────────────────────────────────────────────
   listSection: {
     flex: 1,
     paddingHorizontal: Spacing.xl,
@@ -844,39 +749,6 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
     marginBottom: Spacing.lg,
   },
-  filterTab: {
-    minHeight: 40,
-    paddingHorizontal: Spacing.md,
-    borderRadius: 12,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.surfaceHigh,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  filterTabText: {
-    fontSize: 13,
-    color: Colors.textMuted,
-    fontWeight: '500',
-    lineHeight: 16,
-  },
-  filterEmojiWrap: {
-    height: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  filterEmojiText: {
-    fontSize: 16,
-    lineHeight: 20,
-    textAlign: 'center',
-  },
-  filterTabActive: {
-    backgroundColor: Colors.primaryLight,
-    borderColor: Colors.primary,
-  },
-  filterTabTextActive: {
-    color: Colors.textPrimary,
-  },
   listContent: {
     paddingBottom: Spacing.xxl,
     gap: Spacing.sm,
@@ -886,69 +758,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 40,
     fontSize: 15,
-  },
-  card: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.md,
-    padding: Spacing.lg,
-    borderWidth: 1,
-    borderColor: 'transparent',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  cardDeleting: {
-    backgroundColor: '#3D0A0A',
-    borderColor: '#E24B4A',
-  },
-  cardEmoji: {
-    fontSize: 28,
-    width: 40,
-    textAlign: 'center',
-  },
-  cardName: {
-    color: Colors.textPrimary,
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  cardDate: {
-    color: Colors.textSecondary,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  daysText: {
-    color: Colors.primary,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  chevron: {
-    color: Colors.textMuted,
-    fontSize: 18,
-  },
-  deleteRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  deleteBtn: {
-    backgroundColor: '#E24B4A',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: Radius.sm,
-  },
-  deleteBtnText: {
-    color: 'white',
-    fontWeight: '600',
-    fontSize: 13,
-  },
-  cancelBtn: {
-    backgroundColor: Colors.surfaceHigh,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: Radius.sm,
-  },
-  cancelBtnText: {
-    color: Colors.textSecondary,
-    fontSize: 13,
   },
   debugBtn: {
     marginTop: Spacing.sm,
@@ -963,8 +772,6 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     fontSize: 12,
   },
-
-  // ── Bottom sheet ──────────────────────────────────────────────────────────
   sheetOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
@@ -1049,10 +856,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.textMuted,
   },
-  formInputMulti: {
-    minHeight: 80,
-    paddingTop: 13,
-  },
   linkContactBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1097,25 +900,6 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     fontSize: 16,
   },
-  saveBtn: {
-    backgroundColor: Colors.primary,
-    borderRadius: Radius.md,
-    paddingVertical: Spacing.lg,
-    alignItems: 'center',
-    marginTop: Spacing.sm,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  saveBtnText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-
-  // ── Contact picker overlay ────────────────────────────────────────────────
   pickerOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: Colors.background,
@@ -1185,19 +969,6 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
     borderWidth: 1,
     borderColor: Colors.surfaceHigh,
-  },
-  contactAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  contactAvatarText: {
-    color: Colors.textPrimary,
-    fontSize: 16,
-    fontWeight: '600',
   },
   contactInfo: {
     flex: 1,
